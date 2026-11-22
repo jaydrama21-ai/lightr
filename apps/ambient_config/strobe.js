@@ -148,6 +148,9 @@ class Strobe extends EventEmitter {
     async _probe(target, sid, data, timeoutMs) {
         for (let i = 0; i < 12; i++) {
             const r = await this._ask(target, sid, data, timeoutMs);
+            // DIAG (temporary, for G20 strobe/NRC13 investigation): every find() probe's full raw reply
+            this.log.info('strobe: DIAG probe ' + hex([target]) + ' 22 ' + hex(data) + ' -> '
+                + (r ? r.map((x) => (x < 16 ? '0' : '') + x.toString(16)).join(' ') : 'no answer'));
             if (r || !this.failed) return r;
             await this.sleep(500);
         }
