@@ -482,7 +482,7 @@ mgu.run({
             G.button(cv, t, 520, 190, 220, 42, lever ? 'Lever start: On' : 'Lever start: Off', () => { settings.set('strobeLever', !lever); return redraw(); },
                 { primary: lever, key: 'strobe-lever', busy: !strobe });
             if (strobe && strobe.note) cv.text(strobe.note, 44, 248, 18, strobe.noteType === 'warn' ? t.warn : t.dim);
-            const pat = ['both', 'alternate', 'police'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
+            const pat = ['both', 'alternate', 'police', 'park'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
             const rate = settings.get('strobeRate') || 'normal';
             // the headlight units can flash every front light; the body controller only the high beams
             const lights = strobe && strobe.patterns && settings.get('strobeLights') === 'high' ? 'high' : 'all';
@@ -521,7 +521,8 @@ mgu.run({
             }
             cv.text('Pattern', 44, 346, 18, t.dim);
             // police: one headlight, then the other, the fastest there is (headlight units only)
-            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn']].filter(([k]) => k !== 'police' || (strobe && strobe.patterns));
+            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn'], ['park', 'Park lights']]
+                .filter(([k]) => (k !== 'police' || (strobe && strobe.patterns)) && (k !== 'park' || (strobe && strobe.kind === 'fn')));
             pats.forEach(([k, n], i) => {
                 G.button(cv, t, 44 + i * 150, 356, 140, 42, n, () => { settings.set('strobePattern', k); return redraw(); }, { primary: pat === k, key: 'pat-' + k });
             });

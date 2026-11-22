@@ -81,6 +81,9 @@ const FN_PATTERNS = {
     police: { all: ['high', 'high', 'high', 'high', 'pause', 'pause'], high: ['high', 'high', 'high', 'high', 'pause', 'pause'] },
     both: { all: ['high', 'fog'], high: ['high'] },
     alternate: { all: ['cornL', 'cornR'], high: ['cornL', 'cornR'] },
+    // the parking/position lights left and right in turn: no high beam at all, so none of the headlight unit's
+    // own animated power-up (that's the LED matrix reacting to the high beam function, not this one)
+    park: { all: ['parkL', 'parkR'], high: ['parkL', 'parkR'] },
 };
 const SHOW_ORDER = ['high', 'cornL', 'cornR', 'fog', 'indL', 'indR', 'parkL', 'parkR', 'brake', 'reverse', 'rearFog', 'ess'];
 const FL_L = 0x07, FL_R = 0x08;
