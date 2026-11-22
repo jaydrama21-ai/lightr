@@ -147,15 +147,21 @@ class Strobe extends EventEmitter {
         } catch (e) { this.failed = String(e && e.message || e); return null; }
     }
 
-    /** A read for find(): the transport refusing (busy at the head unit's start) is asked again, no answer is not. */
-    async _probe(target, sid, data, timeoutMs) {
-        for (let i = 0; i < 12; i++) {
+    /**
+     * A read for find(): the transport refusing (busy at the head unit's start) is asked again, no answer is not.
+     * retries/sleepMs: how patient to be (the generic light-function probe gets a longer budget - see find() - since
+     * right after a cold boot other diagnostic consumers (lights, analytics, ...) can hold the same transport for
+     * several seconds, and giving up on it too soon falls through to a less capable kind needlessly).
+     */
+    async _probe(target, sid, data, timeoutMs, retries, sleepMs) {
+        const tries = retries || 12, wait = sleepMs || 500;
+        for (let i = 0; i < tries; i++) {
             const r = await this._ask(target, sid, data, timeoutMs);
             // DIAG (temporary, for G20 strobe/NRC13 investigation): every find() probe's full raw reply
             this.log.info('strobe: DIAG probe ' + hex([target]) + ' 22 ' + hex(data) + ' -> '
                 + (r ? r.map((x) => (x < 16 ? '0' : '') + x.toString(16)).join(' ') : 'no answer'));
             if (r || !this.failed) return r;
-            await this.sleep(500);
+            await this.sleep(wait);
         }
         this.log.info('strobe: ' + hex([target]) + ' not asked (' + this.failed + ')');
         return null;
@@ -181,7 +187,10 @@ class Strobe extends EventEmitter {
             });
         }
         {
-            const r = await this._probe(BDC, 0x22, FN, 4000);
+            // extra patience here: right after a cold boot other diagnostic consumers (lights, analytics, ...) can
+            // hold the transport for several seconds, and this is the one worth waiting out - it answers cleanly
+            // once the bus is free, and is the most capable kind when it does
+            const r = await this._probe(BDC, 0x22, FN, 4000, 30, 500);
             if (r && r[0] === 0x62) {
                 this.kind = 'fn'; this.sides = [BDC];
                 // the headlight units, to hold one side while the other flashes (police); reads only
@@ -217,6 +226,26 @@ class Strobe extends EventEmitter {
         for (const kind of ['bdc', 'g05']) {
             const r = await this._probe(BDC, 0x22, KINDS[kind].status, 4000);
             if (r && r[0] === 0x62) {
+                // before settling for this fallback: by now several seconds and several other probes have gone by,
+                // so the bus that was refusing the light-function probe above may well be free now - a short second
+                // try there is cheap, and landing on 'fn' instead gives Police and the patterns that need it
+                const again = await this._probe(BDC, 0x22, FN, 2000, 4, 400);
+                if (again && again[0] === 0x62) {
+                    this.kind = 'fn'; this.sides = [BDC];
+                    this.mask = null;
+                    for (const k of ['flm', 'fle']) {
+                        const sides = [];
+                        for (const a of SIDES) {
+                            const h = await this._probe(a, 0x22, HEAD[k].read, 3000);
+                            if (h && h[0] === 0x62 && h.length >= 3 + 2 * HEAD[k].n) sides.push(a);
+                        }
+                        if (sides.length === 2) { this.mask = { head: HEAD[k], sides }; break; }
+                    }
+                    this.log.info('strobe: body controller light functions (22 D542 ' + hex(again.slice(3, 9)) + '), found on a second try'
+                        + (this.mask ? ', police with the ' + this.mask.head.name : ''));
+                    this.emit('change');
+                    return 'fn';
+                }
                 this.kind = kind; this.sides = [BDC];
                 this.log.info('strobe: body controller ' + KINDS[kind].name + ' (high beam ' + this._lamp(r, FL_L) + ' / ' + this._lamp(r, FL_R) + ')');
                 this.emit('change');
