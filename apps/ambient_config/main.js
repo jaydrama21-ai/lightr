@@ -481,6 +481,15 @@ mgu.run({
             const lever = settings.get('strobeLever') === true;
             G.button(cv, t, 520, 190, 220, 42, lever ? 'Lever start: On' : 'Lever start: Off', () => { settings.set('strobeLever', !lever); return redraw(); },
                 { primary: lever, key: 'strobe-lever', busy: !strobe });
+            // the strobe itself may run while driving (gateChecks only gates the light show on moving) - the lever is
+            // the only way to start it then, since this screen isn't meant to be touched while moving; set the pattern
+            // and lights here while parked first, then pull the lever once rolling
+            if (lever) {
+                const leverDriving = settings.get('strobeLeverDriving') === true;
+                G.button(cv, t, 520, 240, 220, 42, leverDriving ? 'While driving: On' : 'While driving: Off',
+                    () => { settings.set('strobeLeverDriving', !leverDriving); return redraw(); },
+                    { primary: leverDriving, key: 'strobe-lever-driving', busy: !strobe });
+            }
             if (strobe && strobe.note) cv.text(strobe.note, 44, 248, 18, strobe.noteType === 'warn' ? t.warn : t.dim);
             const pat = ['both', 'alternate', 'police', 'park'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
             const rate = settings.get('strobeRate') || 'normal';
