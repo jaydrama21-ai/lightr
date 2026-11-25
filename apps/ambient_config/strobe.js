@@ -109,12 +109,13 @@ const FN_PATTERNS = {
     alternate: { all: ['cornL', 'cornR'], high: ['cornL', 'cornR'], reverse: ['reverse'], tails: ['reverse', 'brake'], ind: ['indL', 'indR'] },
     // chase: every light picked, one after another, no pause at all - the closest thing to lights "moving" that a
     // one-function-at-a-time body controller can do; on "All lights" that's a tight loop around the car (compare
-    // SHOW_ORDER, the light show's own slower, pausing-between-passes version of the same idea). Tails is
-    // parkL/parkR alone (#231) rather than reverse/brake, for the same reason as Police above - a clean left,
-    // right, left, right with nothing retriggering a half-finished fill animation in between
+    // SHOW_ORDER, the light show's own slower, pausing-between-passes version of the same idea). Tails is parkL,
+    // a brake pulse for "the middle", parkR, another brake pulse (#231) rather than reverse/brake, for the same
+    // reason as Police above - a clean left, middle, right, middle with nothing retriggering a half-finished fill
+    // animation in between; no pause between laps, same as every other Chase entry here
     chase: {
         all: ['high', 'cornL', 'indL', 'brake', 'reverse', 'rearFog', 'indR', 'cornR', 'fog'],
-        high: ['high'], reverse: ['reverse'], tails: ['parkL', 'parkR'], ind: ['indL', 'indR'],
+        high: ['high'], reverse: ['reverse'], tails: ['parkL', 'brake', 'parkR', 'brake'], ind: ['indL', 'indR'],
     },
     // the parking/position lights left and right in turn: no high beam at all, so none of the headlight unit's own
     // animated power-up (that's the LED matrix reacting to the high beam function, not this one); Park isn't a
