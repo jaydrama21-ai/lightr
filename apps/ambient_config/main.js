@@ -65,7 +65,7 @@ const DAY_NIGHT = { KEINE_AENDERUNG: 0, TAG: 1, NACHT: 2, SIGNAL_UNGUELTIG: 3 };
 /* The strobe's options as the Strobe page has them (its buttons' settings), for its Start and the flasher lever. */
 function strobeOptions(settings, strobe) {
     const cyc = (key, vals, def) => { const v = String(settings.get(key) || def); return vals.indexOf(v) >= 0 ? v : def; };
-    const pattern = ['both', 'alternate', 'police', 'park', 'reverse'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
+    const pattern = ['both', 'alternate', 'police', 'park', 'reverse', 'tails'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
     const o = { lights: strobe && strobe.patterns && settings.get('strobeLights') === 'high' ? 'high' : 'all', pattern,
         rate: settings.get('strobeRate') || 'normal', burst: cyc('policeBurst', ['1', '2', '3', '4'], '4'),
         flashMs: cyc('strobeFlashMs', ['50', '80', '100', '150'], '80'), order: cyc('policeOrder', ['lbr', 'lrb', 'lr'], 'lbr') };
@@ -491,7 +491,7 @@ mgu.run({
                     { primary: leverDriving, key: 'strobe-lever-driving', busy: !strobe });
             }
             if (strobe && strobe.note) cv.text(strobe.note, 44, 248, 18, strobe.noteType === 'warn' ? t.warn : t.dim);
-            const pat = ['both', 'alternate', 'police', 'park', 'reverse'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
+            const pat = ['both', 'alternate', 'police', 'park', 'reverse', 'tails'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
             const rate = settings.get('strobeRate') || 'normal';
             // the headlight units can flash every front light; the body controller only the high beams
             const lights = strobe && strobe.patterns && settings.get('strobeLights') === 'high' ? 'high' : 'all';
@@ -530,10 +530,11 @@ mgu.run({
             }
             cv.text('Pattern', 44, 346, 18, t.dim);
             // police: one headlight, then the other, the fastest there is (headlight units only)
-            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn'], ['park', 'Park lights'], ['reverse', 'Reverse lights']]
-                .filter(([k]) => (k !== 'police' || (strobe && strobe.patterns)) && ((k !== 'park' && k !== 'reverse') || (strobe && strobe.kind === 'fn')));
-            // 150/140 fits up to 4 across the panel; past that, narrow the buttons so a 5th still fits
-            const patW = pats.length > 4 ? 134 : 140, patGap = pats.length > 4 ? 139 : 150;
+            const FN_ONLY_PATS = ['park', 'reverse', 'tails'];
+            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn'], ['park', 'Park lights'], ['reverse', 'Reverse lights'], ['tails', 'Rev + brake']]
+                .filter(([k]) => (k !== 'police' || (strobe && strobe.patterns)) && (FN_ONLY_PATS.indexOf(k) < 0 || (strobe && strobe.kind === 'fn')));
+            // 150/140 fits up to 4 across the panel; narrower past that so even 6 fit in one row
+            const patW = pats.length > 5 ? 108 : pats.length > 4 ? 134 : 140, patGap = pats.length > 5 ? 112 : pats.length > 4 ? 139 : 150;
             pats.forEach(([k, n], i) => {
                 G.button(cv, t, 44 + i * patGap, 356, patW, 42, n, () => { settings.set('strobePattern', k); return redraw(); }, { primary: pat === k, key: 'pat-' + k });
             });

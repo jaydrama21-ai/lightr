@@ -87,8 +87,13 @@ const FN_PATTERNS = {
     // reverse only, on and off: there's one reverse-lamp function (both lamps together, no separate L/R), so the
     // flash is this one function then a pause, same rhythm as police's high/pause
     reverse: { all: ['reverse', 'pause'], high: ['reverse', 'pause'] },
+    // reverse, then brake, in turn: nothing that touches the park/running-light function, since aftermarket tails
+    // that replay a startup animation on that input shouldn't be made to replay it every flash
+    tails: { all: ['reverse', 'brake'], high: ['reverse', 'brake'] },
 };
-const SHOW_ORDER = ['high', 'cornL', 'cornR', 'fog', 'indL', 'indR', 'parkL', 'parkR', 'brake', 'reverse', 'rearFog', 'ess'];
+// every outside light flashes in turn, except parkL/parkR (the running lights / main tails) - left out so
+// aftermarket tails with their own power-on animation don't replay it on every pass through the show
+const SHOW_ORDER = ['high', 'cornL', 'cornR', 'fog', 'indL', 'indR', 'brake', 'reverse', 'rearFog', 'ess'];
 const FL_L = 0x07, FL_R = 0x08;
 const STA = 0x03, RCTECU = 0x00;
 const DISCO = [0x45, 0x30];
