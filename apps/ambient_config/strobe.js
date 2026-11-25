@@ -94,28 +94,30 @@ const LIGHTS_KEYS = ['all', 'high', 'reverse', 'tails', 'ind'];
 // already steady on once the car's started, not freshly triggered each flash), so Police/Chase on Tails flash
 // parkL/parkR for the actual left-right part, with a brief brake pulse standing in for "the middle light" -
 // brake is still the only address for that third/center light, so the pulse also flashes the main brake lamps
-// each side, not only the middle one
+// each side, not only the middle one. The order is middle, right, left, repeating - not side, middle, side,
+// middle - so it travels one way round instead of bouncing back and forth
 const FN_PATTERNS = {
     // police: four flashes then a pause, on whichever light(s) are picked; two lights (Indicators) bursts one,
-    // then the other, same four-and-pause rhythm each; Tails bursts parkL, a brake pulse for "the middle", then
-    // parkR, another brake pulse, then the pause (#231)
+    // then the other, same four-and-pause rhythm each; Tails bursts the middle (a brake pulse), then right
+    // (parkR), then left (parkL), then the pause (#231)
     police: {
         all: ['high', 'high', 'high', 'high', 'pause', 'pause'], high: ['high', 'high', 'high', 'high', 'pause', 'pause'],
         reverse: ['reverse', 'reverse', 'reverse', 'reverse', 'pause', 'pause'],
-        tails: ['parkL', 'parkL', 'parkL', 'parkL', 'brake', 'brake', 'parkR', 'parkR', 'parkR', 'parkR', 'brake', 'brake', 'pause', 'pause'],
+        tails: ['brake', 'brake', 'brake', 'brake', 'parkR', 'parkR', 'parkR', 'parkR', 'parkL', 'parkL', 'parkL', 'parkL', 'pause', 'pause'],
         ind: ['indL', 'indL', 'indL', 'indL', 'indR', 'indR', 'indR', 'indR', 'pause', 'pause'],
     },
     both: { all: ['high', 'fog'], high: ['high'], reverse: ['reverse'], tails: ['reverse', 'brake'], ind: ['indL', 'indR'] },
     alternate: { all: ['cornL', 'cornR'], high: ['cornL', 'cornR'], reverse: ['reverse'], tails: ['reverse', 'brake'], ind: ['indL', 'indR'] },
     // chase: every light picked, one after another, no pause at all - the closest thing to lights "moving" that a
     // one-function-at-a-time body controller can do; on "All lights" that's a tight loop around the car (compare
-    // SHOW_ORDER, the light show's own slower, pausing-between-passes version of the same idea). Tails is parkL,
-    // a brake pulse for "the middle", parkR, another brake pulse (#231) rather than reverse/brake, for the same
-    // reason as Police above - a clean left, middle, right, middle with nothing retriggering a half-finished fill
-    // animation in between; no pause between laps, same as every other Chase entry here
+    // SHOW_ORDER, the light show's own slower, pausing-between-passes version of the same idea). Tails is a brake
+    // pulse for "the middle", then parkR, then parkL (#231) rather than reverse/brake, for the same reason as
+    // Police above - a clean middle, right, left travelling one way round instead of bouncing, with nothing
+    // retriggering a half-finished fill animation in between; no pause between laps, same as every other Chase
+    // entry here
     chase: {
         all: ['high', 'cornL', 'indL', 'brake', 'reverse', 'rearFog', 'indR', 'cornR', 'fog'],
-        high: ['high'], reverse: ['reverse'], tails: ['parkL', 'brake', 'parkR', 'brake'], ind: ['indL', 'indR'],
+        high: ['high'], reverse: ['reverse'], tails: ['brake', 'parkR', 'parkL'], ind: ['indL', 'indR'],
     },
     // the parking/position lights left and right in turn: no high beam at all, so none of the headlight unit's own
     // animated power-up (that's the LED matrix reacting to the high beam function, not this one); Park isn't a
