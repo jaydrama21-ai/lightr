@@ -6,14 +6,8 @@
   "vendor": "custom",
   "loggingId": "OAA4",
   "iconGlyph": "ambient",
-  "mguHmi": [
-    "ID7",
-    "ID8"
-  ],
-  "requires": {
-    "idrive7-renderd": "2.1.18",
-    "mgu-inputgate": "1.1.0"
-  },
+  "mguHmi": ["ID7", "ID8"],
+  "requires": { "idrive7-renderd": "2.1.18", "mgu-inputgate": "1.1.0" },
   "autostart": true,
   "signals": {
     "de.bmw.infotainment.misc.ComfortFunctionIuK": {
@@ -113,16 +107,7 @@
       "label": "Decor lights (dash, under the door trim) with",
       "type": "choice",
       "default": "upper",
-      "options": [
-        [
-          "upper",
-          "Upper lights"
-        ],
-        [
-          "lower",
-          "Lower lights (like BMW)"
-        ]
-      ]
+      "options": [["upper", "Upper lights"], ["lower", "Lower lights (like BMW)"]]
     },
     {
       "key": "nightDim",
@@ -188,16 +173,7 @@
       "type": "choice",
       "default": "all",
       "hidden": true,
-      "options": [
-        [
-          "all",
-          "All lights"
-        ],
-        [
-          "high",
-          "High beam"
-        ]
-      ]
+      "options": [["all", "All lights"], ["high", "High beam"]]
     },
     {
       "key": "strobeEvery",
@@ -205,28 +181,7 @@
       "type": "choice",
       "default": "0",
       "hidden": true,
-      "options": [
-        [
-          "0",
-          "Max"
-        ],
-        [
-          "250",
-          "4"
-        ],
-        [
-          "333",
-          "3"
-        ],
-        [
-          "500",
-          "2"
-        ],
-        [
-          "1000",
-          "1"
-        ]
-      ]
+      "options": [["0", "Max"], ["250", "4"], ["333", "3"], ["500", "2"], ["1000", "1"]]
     },
     {
       "key": "policeBurst",
@@ -234,24 +189,7 @@
       "type": "choice",
       "default": "4",
       "hidden": true,
-      "options": [
-        [
-          "1",
-          "1"
-        ],
-        [
-          "2",
-          "2"
-        ],
-        [
-          "3",
-          "3"
-        ],
-        [
-          "4",
-          "4"
-        ]
-      ]
+      "options": [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"]]
     },
     {
       "key": "strobeFlashMs",
@@ -259,24 +197,7 @@
       "type": "choice",
       "default": "80",
       "hidden": true,
-      "options": [
-        [
-          "50",
-          "50 ms"
-        ],
-        [
-          "80",
-          "80 ms"
-        ],
-        [
-          "100",
-          "100 ms"
-        ],
-        [
-          "150",
-          "150 ms"
-        ]
-      ]
+      "options": [["50", "50 ms"], ["80", "80 ms"], ["100", "100 ms"], ["150", "150 ms"]]
     },
     {
       "key": "policeOrder",
@@ -284,20 +205,7 @@
       "type": "choice",
       "default": "lbr",
       "hidden": true,
-      "options": [
-        [
-          "lbr",
-          "Left, both, right"
-        ],
-        [
-          "lrb",
-          "Left, right, both"
-        ],
-        [
-          "lr",
-          "Left, right"
-        ]
-      ]
+      "options": [["lbr", "Left, both, right"], ["lrb", "Left, right, both"], ["lr", "Left, right"]]
     },
     {
       "key": "strobePattern",
@@ -305,32 +213,7 @@
       "type": "choice",
       "default": "police",
       "hidden": true,
-      "options": [
-        [
-          "police",
-          "Police"
-        ],
-        [
-          "both",
-          "Strobe"
-        ],
-        [
-          "alternate",
-          "In turn"
-        ],
-        [
-          "park",
-          "Park lights"
-        ],
-        [
-          "reverse",
-          "Reverse lights"
-        ],
-        [
-          "tails",
-          "Reverse + brake"
-        ]
-      ]
+      "options": [["police", "Police"], ["both", "Strobe"], ["alternate", "In turn"], ["park", "Park lights"], ["reverse", "Reverse lights"], ["tails", "Reverse + brake"]]
     },
     {
       "key": "strobeLever",
@@ -345,20 +228,7 @@
       "type": "choice",
       "default": "normal",
       "hidden": true,
-      "options": [
-        [
-          "fast",
-          "Fast"
-        ],
-        [
-          "normal",
-          "Normal"
-        ],
-        [
-          "slow",
-          "Slow"
-        ]
-      ]
+      "options": [["fast", "Fast"], ["normal", "Normal"], ["slow", "Slow"]]
     },
     {
       "key": "showRate",
@@ -366,16 +236,7 @@
       "type": "choice",
       "default": "normal",
       "hidden": true,
-      "options": [
-        [
-          "fast",
-          "Fast"
-        ],
-        [
-          "normal",
-          "Normal"
-        ]
-      ]
+      "options": [["fast", "Fast"], ["normal", "Normal"]]
     },
     {
       "key": "showMs",
@@ -383,20 +244,7 @@
       "type": "choice",
       "default": "30",
       "hidden": true,
-      "options": [
-        [
-          "15",
-          "15 s"
-        ],
-        [
-          "30",
-          "30 s"
-        ],
-        [
-          "60",
-          "60 s"
-        ]
-      ]
+      "options": [["15", "15 s"], ["30", "30 s"], ["60", "60 s"]]
     },
     {
       "key": "drive",
