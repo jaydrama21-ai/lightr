@@ -2,7 +2,7 @@
   "id": "ambient_config",
   "title": "Ambient config",
   "description": "Any colour on the ambient light, animations, and a look for each driving mode",
-  "version": "2.7.26",
+  "version": "2.7.27",
   "vendor": "custom",
   "loggingId": "OAA4",
   "iconGlyph": "ambient",
@@ -168,12 +168,18 @@
       "default": false
     },
     {
+      "key": "parkOff",
+      "label": "Running lights off (the car has no switch for this - stays off, parked or not, until you turn this back off)",
+      "type": "bool",
+      "default": false
+    },
+    {
       "key": "strobeLights",
       "label": "Strobe lights",
       "type": "choice",
       "default": "all",
       "hidden": true,
-      "options": [["all", "All lights"], ["high", "High beam"], ["reverse", "Reverse"], ["tails", "Reverse + brake"]]
+      "options": [["all", "All lights"], ["high", "High beam"], ["reverse", "Reverse"], ["tails", "Reverse + brake"], ["ind", "Indicators"]]
     },
     {
       "key": "strobeEvery",

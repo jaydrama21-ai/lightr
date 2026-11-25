@@ -41,9 +41,9 @@
  * before a strobe, light show or learn starts, hold(false) once it has ended.
  *
  *   const s = new Strobe({ diag, log, allowed, channels, hold });  await s.find();   s.kind -> 'flm' | 'fle' | 'bdc' | 'g05' | null
- *   s.start({ lights: 'all' | 'high' | 'reverse' | 'tails', pattern: 'police' | 'both' | 'alternate' | 'chase' | 'park',
- *             rate: 'fast' | 'normal' | 'slow' })   s.show()   s.learn()   s.stop()
- *   s.running -> 'strobe' | 'show' | 'learn' | null       s.note       s.on('change', fn)   s.on('learned', fn(channels))
+ *   s.start({ lights: 'all' | 'high' | 'reverse' | 'tails' | 'ind', pattern: 'police' | 'both' | 'alternate' | 'chase' | 'park',
+ *             rate: 'fast' | 'normal' | 'slow' })   s.show()   s.learn()   s.off()   s.stop()
+ *   s.running -> 'strobe' | 'show' | 'learn' | 'off' | null       s.note       s.on('change', fn)   s.on('learned', fn(channels))
  */
 const EventEmitter = require('events');
 
@@ -76,35 +76,38 @@ const POLICE_ORDERS = {
 /** A flash of ms milliseconds in the body controller's 10 ms steps: 30 to 150 ms. */
 const flashTicks = (ms) => Math.max(3, Math.min(15, Math.round((+ms || 100) / 10)));
 // which lamp functions a pattern runs over - picked on screen as "Lights": every lamp (bar park/running, see
-// SHOW_ORDER's own comment), just the high beam, just reverse, or reverse + brake together ("Tails") - nothing
-// here ever touches parkL/parkR, since aftermarket tails that replay a startup animation on that input shouldn't
-// be made to replay it every flash
-const LIGHTS_KEYS = ['all', 'high', 'reverse', 'tails'];
+// SHOW_ORDER's own comment), just the high beam, just reverse, reverse + brake together ("Tails"), or the
+// indicators - nothing here ever touches parkL/parkR, since aftermarket tails that replay a startup animation
+// on that input shouldn't be made to replay it every flash. Indicators are their own choice because, unlike
+// brake/reverse, some aftermarket tails run a sequential "flowing" animation off that circuit specifically
+// (#226) - picking it here is how to see that animation without also flashing the headlights/fog/cornering
+const LIGHTS_KEYS = ['all', 'high', 'reverse', 'tails', 'ind'];
 // the patterns, one function a request; police and in turn only ever one side at a time (the high beam is both).
 // Each is filled in for every key in LIGHTS_KEYS so any pattern can run over any of them (#226) - "both"/"alternate"/
-// "chase" only really differ once more than one light's selected (Tails), since a single light has nothing to
-// alternate or chase between
+// "chase" only really differ once more than one light's selected (Tails, Indicators), since a single light has
+// nothing to alternate or chase between
 const FN_PATTERNS = {
-    // police: four flashes then a pause, on whichever light(s) are picked; two lights (Tails) bursts one, then
-    // the other, same four-and-pause rhythm each
+    // police: four flashes then a pause, on whichever light(s) are picked; two lights (Tails, Indicators) bursts
+    // one, then the other, same four-and-pause rhythm each
     police: {
         all: ['high', 'high', 'high', 'high', 'pause', 'pause'], high: ['high', 'high', 'high', 'high', 'pause', 'pause'],
         reverse: ['reverse', 'reverse', 'reverse', 'reverse', 'pause', 'pause'],
         tails: ['reverse', 'reverse', 'reverse', 'reverse', 'brake', 'brake', 'brake', 'brake', 'pause', 'pause'],
+        ind: ['indL', 'indL', 'indL', 'indL', 'indR', 'indR', 'indR', 'indR', 'pause', 'pause'],
     },
-    both: { all: ['high', 'fog'], high: ['high'], reverse: ['reverse'], tails: ['reverse', 'brake'] },
-    alternate: { all: ['cornL', 'cornR'], high: ['cornL', 'cornR'], reverse: ['reverse'], tails: ['reverse', 'brake'] },
+    both: { all: ['high', 'fog'], high: ['high'], reverse: ['reverse'], tails: ['reverse', 'brake'], ind: ['indL', 'indR'] },
+    alternate: { all: ['cornL', 'cornR'], high: ['cornL', 'cornR'], reverse: ['reverse'], tails: ['reverse', 'brake'], ind: ['indL', 'indR'] },
     // chase: every light picked, one after another, no pause at all - the closest thing to lights "moving" that a
     // one-function-at-a-time body controller can do; on "All lights" that's a tight loop around the car (compare
     // SHOW_ORDER, the light show's own slower, pausing-between-passes version of the same idea)
     chase: {
         all: ['high', 'cornL', 'indL', 'brake', 'reverse', 'rearFog', 'indR', 'cornR', 'fog'],
-        high: ['high'], reverse: ['reverse'], tails: ['reverse', 'brake'],
+        high: ['high'], reverse: ['reverse'], tails: ['reverse', 'brake'], ind: ['indL', 'indR'],
     },
     // the parking/position lights left and right in turn: no high beam at all, so none of the headlight unit's own
     // animated power-up (that's the LED matrix reacting to the high beam function, not this one); Park isn't a
     // "Lights" choice itself, so every key here is the same fixed pair
-    park: { all: ['parkL', 'parkR'], high: ['parkL', 'parkR'], reverse: ['parkL', 'parkR'], tails: ['parkL', 'parkR'] },
+    park: { all: ['parkL', 'parkR'], high: ['parkL', 'parkR'], reverse: ['parkL', 'parkR'], tails: ['parkL', 'parkR'], ind: ['parkL', 'parkR'] },
 };
 // every outside light flashes in turn, except parkL/parkR (the running lights / main tails) - left out so
 // aftermarket tails with their own power-on animation don't replay it on every pass through the show
@@ -717,6 +720,42 @@ class Strobe extends EventEmitter {
             this._rest(s0);
             this.log.info('strobe: ' + (end ? end[0] : 'light show ended'));
             this._say(end ? end[0] : 'Light show stopped', end ? end[1] : 'dim');
+        }
+    }
+
+    /**
+     * parkL/parkR (the running/position lights) held off until stop(), a refusal or allowed() saying no - the one
+     * function the car gives no on-screen way to switch off itself, parked or not. Only the park/running lights:
+     * unlike a strobe or the light show, this is meant to run for as long as the person leaves it on, so it is not
+     * held to the "may run" checks of start()/show() (no private-property warning, no parked-only rule) - just
+     * whether someone is in the car, same as every other diagnostic session here. Headlights, brake and reverse
+     * stay out of reach of this toggle: forcing those off while actually driving would be unsafe and illegal, and
+     * this one function code has no "off, but only while parked" variant to fall back to, so it is left out rather
+     * than offered with a rule it can't enforce on its own (#226).
+     */
+    off() { return this._held(() => this._off()); }
+    async _off() {
+        if (this.running) return;
+        if (this.kind !== 'fn') { this._say('Lights off: needs the body controller\'s light functions', 'warn'); return; }
+        this.running = 'off'; this._stop = false; this._say('Lights off: starting...');
+        let end = null, said = false;
+        try {
+            const r = await this._ask(BDC, 0x10, [0x03]);
+            if (!r || r[0] !== 0x50) { end = ['Lights off: the body controller refused the diagnostic session', 'warn']; return; }
+            while (!this._stop) {
+                const stopWhy = this.allowed(this.running);
+                if (stopWhy) { end = ['Lights off stopped: ' + stopWhy, 'warn']; break; }
+                const rl = await this._fn('parkL', 0), rr = await this._fn('parkR', 0);
+                if (rl !== true || rr !== true) { end = ['Lights off stopped: refused (' + (rl !== true ? rl : rr) + ')', 'warn']; break; }
+                if (!said) { this._say('Running lights off'); said = true; }
+                await this.sleep(500);
+            }
+            if (!end) end = ['Lights off stopped', 'dim'];
+        } finally {
+            await this._ask(BDC, 0x10, [0x01]);
+            this.running = null;
+            this.log.info('strobe: ' + (end ? end[0] : 'lights off ended'));
+            this._say(end ? end[0] : 'Lights off stopped', end ? end[1] : 'dim');
         }
     }
 

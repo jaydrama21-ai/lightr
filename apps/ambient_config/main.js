@@ -179,7 +179,10 @@ async function background(bg) {
     // step: it stops when the car moves off); why not, or null
     const parked = Parked.watch(bg, log);
     const checks = () => gateChecks({ setting: settings.get('strobe') === true, away: control._away, moving: parked.moving() });
-    const gate = (what) => gateWhy(checks(), what);
+    // lights-off isn't gated behind the "private property" strobe setting or a parked rule (it's meant to just stay
+    // off whenever it's switched on) - only the one check every diagnostic session here needs regardless, someone
+    // actually being in the car to leave it running on
+    const gate = (what) => what === 'off' ? (control._away ? 'someone in the car: no' : null) : gateWhy(checks(), what);
     // the high beam's channels learned on a headlight unit, kept in the data folder
     const fs = require('fs'), path = require('path');
     const chFile = bg.dataDir ? path.join(bg.dataDir, 'strobe_channels.json') : null;
@@ -189,8 +192,18 @@ async function background(bg) {
     // between got the strobe's refused)
     const strobe = new Strobe({ diag, log, allowed: gate, channels, hold: (on) => lights.hold('strobe', on) });
     strobe.on('learned', (c) => { try { if (chFile) fs.writeFileSync(chFile, JSON.stringify(c)); } catch (e) { log.warn('strobe: ' + e); } });
-    const findStrobe = () => { if (settings.get('strobe') === true && !strobe.kind) strobe.find().catch((e) => log.warn('strobe: ' + e)); };
+    const findStrobe = () => {
+        if ((settings.get('strobe') === true || settings.get('parkOff') === true) && !strobe.kind) strobe.find().catch((e) => log.warn('strobe: ' + e));
+    };
     findStrobe();
+    // the running/position lights off, until parkOff is switched off again (strobe.js's off()): started as soon as
+    // it's on and the lamp-function control is found, and started again whenever something (someone leaving the
+    // car, a strobe or light show taking the diagnostic session, the car not being found yet) had stopped it
+    const tryParkOff = () => {
+        if (settings.get('parkOff') !== true || strobe.running || !strobe.kind) return;
+        strobe.off().catch((e) => log.warn('strobe: ' + e));
+    };
+    strobe.on('change', tryParkOff);
     // the flasher lever (lever.js): three quick pulls while parked (also while driving with strobeLeverDriving, for
     // private property) start the strobe as the Strobe page has it, while its Lever start is on (off until switched on),
     // and three more while it flashes stop it; the light status read only from then on, 10 times a second (a quick pull
@@ -223,6 +236,7 @@ async function background(bg) {
     settings.onChange((key) => {
         if (key === 'strobe') { if (settings.get('strobe') === true) findStrobe(); else strobe.stop(); }
         if (key === 'strobeLever') watchLever();
+        if (key === 'parkOff') { if (settings.get('parkOff') === true) { findStrobe(); tryParkOff(); } else if (strobe.running === 'off') strobe.stop(); }
     });
     // (the car locked and left mid-flash: the gate says no at the next step and the strobe stops)
     return { ambient, lights, control, active, others, strobe, checks, lookAgain: () => lights.find({ force: true }).then(counted) };
@@ -469,7 +483,9 @@ mgu.run({
          * a press arms, a second starts; Stop, the setting off or the car locked and left stops it and gives the lamps back.
          */
         function drawStrobe(cv, t) {
-            G.panel(cv, t, 24, 44, 736, 468, 'Strobe');
+            // Strobe gets the lion's share of the width (it has most of the controls); Light show keeps the same
+            // right edge (1576) so its right-anchored Start show button doesn't have to move
+            G.panel(cv, t, 24, 44, 900, 468, 'Strobe');
             const kindText = !strobe ? 'Not available' : strobe.kind ? 'Lamps: ' + strobe.kindName
                 + (strobe.head ? (strobe.high ? ' · high beam channel ' + strobe.high.map((c) => c.ch).join(', ') : ' · high beam not learned yet') : '')
                 : 'Looking for the headlights\' lamp control...';
@@ -529,16 +545,28 @@ mgu.run({
                 const row1 = [['lights-all', 'All lights', lights === 'all', () => { settings.set('strobeLights', 'all'); return redraw(); }],
                     ['lights-high', 'High beam', lights === 'high', () => { settings.set('strobeLights', 'high'); return redraw(); }]];
                 // the body controller's flashes take their length for every pattern, not only police (issue #157);
-                // reverse/brake are also only lamp functions the body controller has, not the headlight units
+                // reverse/brake/indicators are also only lamp functions the body controller has, not the headlight
+                // units. Indicators are their own choice because some aftermarket tails run a sequential "flowing"
+                // animation off that circuit specifically (#226), separate from brake/reverse
                 if (strobe.kind === 'fn') {
                     row1.push(['tune-strobeFlashMs', flashMs + ' ms', false,
                         () => { settings.set('strobeFlashMs', next(['50', '80', '100', '150'], flashMs)); return redraw(); }]);
                     row1.push(['lights-reverse', 'Reverse', lights === 'reverse', () => { settings.set('strobeLights', 'reverse'); return redraw(); }]);
                     row1.push(['lights-tails', 'Tails', lights === 'tails', () => { settings.set('strobeLights', 'tails'); return redraw(); }]);
+                    row1.push(['lights-ind', 'Indicators', lights === 'ind', () => { settings.set('strobeLights', 'ind'); return redraw(); }]);
                 }
                 row1.forEach(([key, label, primary, act], i) => {
                     G.button(cv, t, 44 + i * 139, 284, 134, 42, label, act, { primary, key });
                 });
+            }
+            if (strobe && strobe.kind === 'fn') {
+                // the running/position lights, forced off for as long as this stays on - the car gives no other way
+                // to switch them off, parked or not (#231)
+                const parkOff = settings.get('parkOff') === true;
+                G.button(cv, t, 480, colY, 220, 42, parkOff ? 'Lights off: On' : 'Lights off: Off', () => {
+                    settings.set('parkOff', !parkOff); return redraw();
+                }, { primary: parkOff, key: 'strobe-parkoff', busy: !strobe || strobe.running === 'strobe' || strobe.running === 'show' || strobe.running === 'learn' });
+                colY += 50;
             }
             if (strobe && strobe.head) {
                 // which channels are the high beam, seen while it is switched on with the stalk
@@ -578,27 +606,29 @@ mgu.run({
                 return redraw();
             }, { primary: on, key: 'strobe-go', confirm: !on, busy: !strobe || !strobe.kind || strobe.running === 'show' || strobe.running === 'learn' });
 
-            G.panel(cv, t, 776, 44, 800, 468, 'Light show');
+            // narrower than Strobe - it only has Length and Speed - but keeps the same right edge (940+636=1576)
+            // so Start show below doesn't need to move
+            G.panel(cv, t, 940, 44, 636, 468, 'Light show');
             const showSecs = cyc('showMs', ['15', '30', '60'], '30');
             (strobe && strobe.kind === 'fn' ? ['Every outside light flashes in turn for ' + showSecs + ' s: high beam,', 'cornering, fog, indicators, brake, reverse and more.']
                 : strobe && strobe.head ? ['The headlights flash fully on and dark, left and right in', 'turn, for ' + showSecs + ' s.']
-                : ['Every lamp output flashes for ' + showSecs + ' s, run by the body controller', 'itself (BDC_G11 and BDC_G05).']).forEach((l, i) => cv.text(l, 796, 112 + i * 26, 18, t.dim));
-            cv.text('Only for use on private property.', 796, 190, 20, t.warn, { font: 'bold' });
-            ['Flashing headlights on public roads is illegal and dangerous', 'to other drivers.'].forEach((l, i) => cv.text(l, 796, 220 + i * 26, 18, t.text));
+                : ['Every lamp output flashes for ' + showSecs + ' s, run by the body controller', 'itself (BDC_G11 and BDC_G05).']).forEach((l, i) => cv.text(l, 960, 112 + i * 26, 18, t.dim));
+            cv.text('Only for use on private property.', 960, 190, 20, t.warn, { font: 'bold' });
+            ['Flashing headlights on public roads is illegal and dangerous', 'to other drivers.'].forEach((l, i) => cv.text(l, 960, 220 + i * 26, 18, t.text));
             if (paused) {
-                cv.text(paused.moving ? 'Ambient animation paused while this tab is open.' : 'Ambient light updates paused while this tab is open.', 796, 300, 20, t.warn, { font: 'bold' });
-                cv.text('They carry on when you leave the Strobe tab.', 796, 326, 18, t.dim);
+                cv.text(paused.moving ? 'Ambient animation paused while this tab is open.' : 'Ambient light updates paused while this tab is open.', 960, 300, 20, t.warn, { font: 'bold' });
+                cv.text('They carry on when you leave the Strobe tab.', 960, 326, 18, t.dim);
             }
             // a touch higher/shorter than the Strobe panel's equivalent row so its buttons (bottom 400) clear the
             // Speed label right under it (414) instead of running into it
-            cv.text('Length', 796, 350, 18, t.dim);
+            cv.text('Length', 960, 350, 18, t.dim);
             [['15', '15 s'], ['30', '30 s'], ['60', '60 s']].forEach(([k, n], i) => {
-                G.button(cv, t, 796 + i * 150, 362, 140, 38, n, () => { settings.set('showMs', k); return redraw(); }, { primary: showSecs === k, key: 'show-ms-' + k });
+                G.button(cv, t, 960 + i * 150, 362, 140, 38, n, () => { settings.set('showMs', k); return redraw(); }, { primary: showSecs === k, key: 'show-ms-' + k });
             });
             const srate = settings.get('showRate') === 'fast' ? 'fast' : 'normal';
-            cv.text('Speed', 796, 414, 18, t.dim);
+            cv.text('Speed', 960, 414, 18, t.dim);
             [['fast', 'Fast'], ['normal', 'Normal']].forEach(([k, n], i) => {
-                G.button(cv, t, 796 + i * 150, 426, 140, 48, n, () => { settings.set('showRate', k); return redraw(); }, { primary: srate === k, key: 'srate-' + k });
+                G.button(cv, t, 960 + i * 150, 426, 140, 48, n, () => { settings.set('showRate', k); return redraw(); }, { primary: srate === k, key: 'srate-' + k });
             });
             const showing = strobe && strobe.running === 'show';
             G.button(cv, t, 1336, 426, 220, 48, showing ? 'Stop' : 'Start show', () => {
