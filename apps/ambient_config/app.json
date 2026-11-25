@@ -2,7 +2,7 @@
   "id": "ambient_config",
   "title": "Ambient config",
   "description": "Any colour on the ambient light, animations, and a look for each driving mode",
-  "version": "2.7.25",
+  "version": "2.7.26",
   "vendor": "custom",
   "loggingId": "OAA4",
   "iconGlyph": "ambient",
@@ -173,7 +173,7 @@
       "type": "choice",
       "default": "all",
       "hidden": true,
-      "options": [["all", "All lights"], ["high", "High beam"]]
+      "options": [["all", "All lights"], ["high", "High beam"], ["reverse", "Reverse"], ["tails", "Reverse + brake"]]
     },
     {
       "key": "strobeEvery",
@@ -213,7 +213,7 @@
       "type": "choice",
       "default": "police",
       "hidden": true,
-      "options": [["police", "Police"], ["both", "Strobe"], ["alternate", "In turn"], ["park", "Park lights"], ["reverse", "Reverse lights"], ["tails", "Reverse + brake"]]
+      "options": [["police", "Police"], ["both", "Strobe"], ["alternate", "In turn"], ["chase", "Chase"], ["park", "Park lights"]]
     },
     {
       "key": "strobeLever",

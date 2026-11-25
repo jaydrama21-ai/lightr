@@ -27,7 +27,7 @@ const { Ambient, SLOTS } = require('./ambient');
 const { Lights } = require('./lights');
 const { Control } = require('./control');
 const { Others } = require('./others');
-const { Strobe, gateChecks, gateWhy } = require('./strobe');
+const { Strobe, gateChecks, gateWhy, LIGHTS_KEYS } = require('./strobe');
 const { Lever, beamOf } = require('./lever');
 const Parked = require('./kit/parked');
 const { t: translate } = require('./kit/i18n');
@@ -65,8 +65,12 @@ const DAY_NIGHT = { KEINE_AENDERUNG: 0, TAG: 1, NACHT: 2, SIGNAL_UNGUELTIG: 3 };
 /* The strobe's options as the Strobe page has them (its buttons' settings), for its Start and the flasher lever. */
 function strobeOptions(settings, strobe) {
     const cyc = (key, vals, def) => { const v = String(settings.get(key) || def); return vals.indexOf(v) >= 0 ? v : def; };
-    const pattern = ['both', 'alternate', 'police', 'park', 'reverse', 'tails'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
-    const o = { lights: strobe && strobe.patterns && settings.get('strobeLights') === 'high' ? 'high' : 'all', pattern,
+    const pattern = ['both', 'alternate', 'police', 'chase', 'park'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
+    // Reverse/Tails are a "lights" choice like All lights/High beam, not their own pattern (#226) - every pattern can
+    // run over them; only the body controller's light functions have a reverse or brake function to pick, though
+    const lightsKeys = strobe && strobe.kind === 'fn' ? LIGHTS_KEYS : ['all', 'high'];
+    const lights = lightsKeys.indexOf(settings.get('strobeLights')) >= 0 ? settings.get('strobeLights') : 'all';
+    const o = { lights, pattern,
         rate: settings.get('strobeRate') || 'normal', burst: cyc('policeBurst', ['1', '2', '3', '4'], '4'),
         flashMs: cyc('strobeFlashMs', ['50', '80', '100', '150'], '80'), order: cyc('policeOrder', ['lbr', 'lrb', 'lr'], 'lbr') };
     if (strobe && strobe.kind === 'fn') o.every = +cyc('strobeEvery', ['0', '250', '333', '500', '1000'], '0');
@@ -496,20 +500,19 @@ mgu.run({
                 colY += 50;
             }
             if (strobe && strobe.note) cv.text(strobe.note, 44, 248, 18, strobe.noteType === 'warn' ? t.warn : t.dim);
-            const pat = ['both', 'alternate', 'police', 'park', 'reverse', 'tails'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
+            const pat = ['both', 'alternate', 'police', 'chase', 'park'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
             const rate = settings.get('strobeRate') || 'normal';
-            // the headlight units can flash every front light; the body controller only the high beams
-            const lights = strobe && strobe.patterns && settings.get('strobeLights') === 'high' ? 'high' : 'all';
+            // the headlight units can flash every front light; the body controller can also pick reverse, or
+            // reverse+brake together ("Tails") - whichever pattern below is picked runs over whichever of these
+            // is picked here (#226), since reverse/brake are lamp functions like any other, not their own pattern
+            const lightsKeys = strobe && strobe.kind === 'fn' ? LIGHTS_KEYS : ['all', 'high'];
+            const lights = lightsKeys.indexOf(settings.get('strobeLights')) >= 0 ? settings.get('strobeLights') : 'all';
             // police on the high beam (light functions with the headlight units): its tuning in place of Lights
             const policeTune = strobe && strobe.kind === 'fn' && strobe.mask && pat === 'police';
             const cyc = (key, vals, def) => { const v = String(settings.get(key) || def); return vals.indexOf(v) >= 0 ? v : def; };
             const burst = cyc('policeBurst', ['1', '2', '3', '4'], '4'), flashMs = cyc('strobeFlashMs', ['50', '80', '100', '150'], '80');
             const order = cyc('policeOrder', ['lbr', 'lrb', 'lr'], 'lbr');
             const next = (vals, v) => vals[(vals.indexOf(v) + 1) % vals.length];
-            // Reverse/Tails join the Lights row below when that row is actually showing (true whenever Police
-            // tuning isn't using its spot instead) so they don't need their own row; if Police tuning has taken
-            // over that row, they fall back to the Pattern row below instead, so they're never unreachable
-            const reverseTailsOnLightsRow = strobe && strobe.patterns && strobe.kind === 'fn' && !policeTune;
             if (policeTune) {
                 cv.text('Police: flashes a burst · flash · order (tap to change)', 44, 274, 18, t.dim);
                 const ORDER_NAMES = { lrb: 'L R Both', lr: 'L R', lbr: 'L Both R' };
@@ -525,14 +528,13 @@ mgu.run({
                 // LIGHTS" 93.5 px, "REVERSE" 72.9 px, ...) fits it with room to spare
                 const row1 = [['lights-all', 'All lights', lights === 'all', () => { settings.set('strobeLights', 'all'); return redraw(); }],
                     ['lights-high', 'High beam', lights === 'high', () => { settings.set('strobeLights', 'high'); return redraw(); }]];
-                // the body controller's flashes take their length for every pattern, not only police (issue #157)
+                // the body controller's flashes take their length for every pattern, not only police (issue #157);
+                // reverse/brake are also only lamp functions the body controller has, not the headlight units
                 if (strobe.kind === 'fn') {
                     row1.push(['tune-strobeFlashMs', flashMs + ' ms', false,
                         () => { settings.set('strobeFlashMs', next(['50', '80', '100', '150'], flashMs)); return redraw(); }]);
-                    if (reverseTailsOnLightsRow) {
-                        row1.push(['pat-reverse', 'Reverse', pat === 'reverse', () => { settings.set('strobePattern', 'reverse'); return redraw(); }]);
-                        row1.push(['pat-tails', 'Tails', pat === 'tails', () => { settings.set('strobePattern', 'tails'); return redraw(); }]);
-                    }
+                    row1.push(['lights-reverse', 'Reverse', lights === 'reverse', () => { settings.set('strobeLights', 'reverse'); return redraw(); }]);
+                    row1.push(['lights-tails', 'Tails', lights === 'tails', () => { settings.set('strobeLights', 'tails'); return redraw(); }]);
                 }
                 row1.forEach(([key, label, primary, act], i) => {
                     G.button(cv, t, 44 + i * 139, 284, 134, 42, label, act, { primary, key });
@@ -547,15 +549,11 @@ mgu.run({
                 }, { primary: learning, key: 'strobe-learn', busy: !learning && !!strobe.running });
             }
             cv.text('Pattern', 44, 346, 18, t.dim);
-            // police: one headlight, then the other, the fastest there is (headlight units only)
-            const FN_ONLY_PATS = ['park', 'reverse', 'tails'];
-            // Reverse/Tails are already on the Lights row above in the common case; only the Police-tuning
-            // fallback needs them here too, and then they're back to short labels - 6 across (108 px) is too
-            // narrow for "Reverse lights"/"Rev + brake" (measured 137/106 px of text in an 88 px slot)
-            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn'], ['park', 'Park']]
-                .concat(reverseTailsOnLightsRow ? [] : [['reverse', 'Reverse'], ['tails', 'Tails']])
+            // chase: fn-only (it just cycles light functions, same as the others, but no headlight-unit equivalent
+            // exists for it); park likewise
+            const FN_ONLY_PATS = ['park', 'chase'];
+            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn'], ['chase', 'Chase'], ['park', 'Park']]
                 .filter(([k]) => (k !== 'police' || (strobe && strobe.patterns)) && (FN_ONLY_PATS.indexOf(k) < 0 || (strobe && strobe.kind === 'fn')));
-            // 150/140 fits up to 4 across the panel; narrower past that for the rare 6-across fallback
             const patW = pats.length > 5 ? 108 : pats.length > 4 ? 134 : 140, patGap = pats.length > 5 ? 112 : pats.length > 4 ? 139 : 150;
             pats.forEach(([k, n], i) => {
                 G.button(cv, t, 44 + i * patGap, 356, patW, 42, n, () => { settings.set('strobePattern', k); return redraw(); }, { primary: pat === k, key: 'pat-' + k });

@@ -41,7 +41,8 @@
  * before a strobe, light show or learn starts, hold(false) once it has ended.
  *
  *   const s = new Strobe({ diag, log, allowed, channels, hold });  await s.find();   s.kind -> 'flm' | 'fle' | 'bdc' | 'g05' | null
- *   s.start({ lights: 'all' | 'high', pattern: 'both' | 'alternate', rate: 'fast' | 'normal' | 'slow' })   s.show()   s.learn()   s.stop()
+ *   s.start({ lights: 'all' | 'high' | 'reverse' | 'tails', pattern: 'police' | 'both' | 'alternate' | 'chase' | 'park',
+ *             rate: 'fast' | 'normal' | 'slow' })   s.show()   s.learn()   s.stop()
  *   s.running -> 'strobe' | 'show' | 'learn' | null       s.note       s.on('change', fn)   s.on('learned', fn(channels))
  */
 const EventEmitter = require('events');
@@ -74,22 +75,36 @@ const POLICE_ORDERS = {
 };
 /** A flash of ms milliseconds in the body controller's 10 ms steps: 30 to 150 ms. */
 const flashTicks = (ms) => Math.max(3, Math.min(15, Math.round((+ms || 100) / 10)));
-// the patterns, one function a request; police and in turn only ever one side at a time (the high beam is both)
+// which lamp functions a pattern runs over - picked on screen as "Lights": every lamp (bar park/running, see
+// SHOW_ORDER's own comment), just the high beam, just reverse, or reverse + brake together ("Tails") - nothing
+// here ever touches parkL/parkR, since aftermarket tails that replay a startup animation on that input shouldn't
+// be made to replay it every flash
+const LIGHTS_KEYS = ['all', 'high', 'reverse', 'tails'];
+// the patterns, one function a request; police and in turn only ever one side at a time (the high beam is both).
+// Each is filled in for every key in LIGHTS_KEYS so any pattern can run over any of them (#226) - "both"/"alternate"/
+// "chase" only really differ once more than one light's selected (Tails), since a single light has nothing to
+// alternate or chase between
 const FN_PATTERNS = {
-    // police without headlight units to hold a side: high beam bursts with a pause (cornering lights are side
-    // markers on some cars)
-    police: { all: ['high', 'high', 'high', 'high', 'pause', 'pause'], high: ['high', 'high', 'high', 'high', 'pause', 'pause'] },
-    both: { all: ['high', 'fog'], high: ['high'] },
-    alternate: { all: ['cornL', 'cornR'], high: ['cornL', 'cornR'] },
-    // the parking/position lights left and right in turn: no high beam at all, so none of the headlight unit's
-    // own animated power-up (that's the LED matrix reacting to the high beam function, not this one)
-    park: { all: ['parkL', 'parkR'], high: ['parkL', 'parkR'] },
-    // reverse only, on and off: there's one reverse-lamp function (both lamps together, no separate L/R), so the
-    // flash is this one function then a pause, same rhythm as police's high/pause
-    reverse: { all: ['reverse', 'pause'], high: ['reverse', 'pause'] },
-    // reverse, then brake, in turn: nothing that touches the park/running-light function, since aftermarket tails
-    // that replay a startup animation on that input shouldn't be made to replay it every flash
-    tails: { all: ['reverse', 'brake'], high: ['reverse', 'brake'] },
+    // police: four flashes then a pause, on whichever light(s) are picked; two lights (Tails) bursts one, then
+    // the other, same four-and-pause rhythm each
+    police: {
+        all: ['high', 'high', 'high', 'high', 'pause', 'pause'], high: ['high', 'high', 'high', 'high', 'pause', 'pause'],
+        reverse: ['reverse', 'reverse', 'reverse', 'reverse', 'pause', 'pause'],
+        tails: ['reverse', 'reverse', 'reverse', 'reverse', 'brake', 'brake', 'brake', 'brake', 'pause', 'pause'],
+    },
+    both: { all: ['high', 'fog'], high: ['high'], reverse: ['reverse'], tails: ['reverse', 'brake'] },
+    alternate: { all: ['cornL', 'cornR'], high: ['cornL', 'cornR'], reverse: ['reverse'], tails: ['reverse', 'brake'] },
+    // chase: every light picked, one after another, no pause at all - the closest thing to lights "moving" that a
+    // one-function-at-a-time body controller can do; on "All lights" that's a tight loop around the car (compare
+    // SHOW_ORDER, the light show's own slower, pausing-between-passes version of the same idea)
+    chase: {
+        all: ['high', 'cornL', 'indL', 'brake', 'reverse', 'rearFog', 'indR', 'cornR', 'fog'],
+        high: ['high'], reverse: ['reverse'], tails: ['reverse', 'brake'],
+    },
+    // the parking/position lights left and right in turn: no high beam at all, so none of the headlight unit's own
+    // animated power-up (that's the LED matrix reacting to the high beam function, not this one); Park isn't a
+    // "Lights" choice itself, so every key here is the same fixed pair
+    park: { all: ['parkL', 'parkR'], high: ['parkL', 'parkR'], reverse: ['parkL', 'parkR'], tails: ['parkL', 'parkR'] },
 };
 // every outside light flashes in turn, except parkL/parkR (the running lights / main tails) - left out so
 // aftermarket tails with their own power-on animation don't replay it on every pass through the show
@@ -523,7 +538,8 @@ class Strobe extends EventEmitter {
             // every: the time from one flash to the next (ms; 0 or less than a request takes: as fast as it goes)
             const flash = { on: o && o.flashMs ? flashTicks(o.flashMs) : base.on, gap: o && o.every != null ? Math.max(0, Math.min(2000, +o.every || 0)) : base.gap };
             if ((!o || !o.pattern || o.pattern === 'police') && this.mask) return this._runPolice(flash, MAX_MS, o);
-            return this._runFn(pat[o && o.lights === 'high' ? 'high' : 'all'], flash, MAX_MS, 'Strobe');
+            const lightsKey = o && LIGHTS_KEYS.indexOf(o.lights) >= 0 ? o.lights : 'all';
+            return this._runFn(pat[lightsKey] || pat.all, flash, MAX_MS, 'Strobe');
         }
         const head = !!this.head;
         // police: one headlight flashes, then the other, one write each (the fastest there is: ~200 ms a write)
@@ -761,4 +777,4 @@ function gateChecks(o) {
 }
 const gateWhy = (checks, what) => { const c = checks.find((x) => !x[1] && (!x[3] || x[3] === what)); return c ? c[0].toLowerCase() + ': no' : null; };
 
-module.exports = { gateChecks, gateWhy, Strobe, KINDS, HEAD, F, FN_PATTERNS, FLASH, POLICE_ORDERS, flashTicks, SIDES, FL_L, FL_R, HALF_MS, MAX_MS, SHOW_MS, statusIndex };
+module.exports = { gateChecks, gateWhy, Strobe, KINDS, HEAD, F, FN_PATTERNS, LIGHTS_KEYS, FLASH, POLICE_ORDERS, flashTicks, SIDES, FL_L, FL_R, HALF_MS, MAX_MS, SHOW_MS, statusIndex };
