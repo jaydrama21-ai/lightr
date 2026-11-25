@@ -77,32 +77,44 @@ const POLICE_ORDERS = {
 const flashTicks = (ms) => Math.max(3, Math.min(15, Math.round((+ms || 100) / 10)));
 // which lamp functions a pattern runs over - picked on screen as "Lights": every lamp (bar park/running, see
 // SHOW_ORDER's own comment), just the high beam, just reverse, reverse + brake together ("Tails"), or the
-// indicators - nothing here ever touches parkL/parkR, since aftermarket tails that replay a startup animation
-// on that input shouldn't be made to replay it every flash. Indicators are their own choice because, unlike
-// brake/reverse, some aftermarket tails run a sequential "flowing" animation off that circuit specifically
-// (#226) - picking it here is how to see that animation without also flashing the headlights/fog/cornering
+// indicators. Indicators are their own choice because, unlike brake/reverse, some aftermarket tails run a
+// sequential "flowing" animation off that circuit specifically (#226) - picking it here is how to see that
+// animation without also flashing the headlights/fog/cornering
 const LIGHTS_KEYS = ['all', 'high', 'reverse', 'tails', 'ind'];
 // the patterns, one function a request; police and in turn only ever one side at a time (the high beam is both).
 // Each is filled in for every key in LIGHTS_KEYS so any pattern can run over any of them (#226) - "both"/"alternate"/
 // "chase" only really differ once more than one light's selected (Tails, Indicators), since a single light has
-// nothing to alternate or chase between
+// nothing to alternate or chase between.
+//   Tails under Police/Chase is the one exception that does reach for parkL/parkR (#231): reverse and brake only
+// have the one function code for both sides together, so every reverse/brake flash just retriggers the tail
+// light's own built-in sequential "coming home" fill animation on both sides at once - which side looks lit at
+// any instant then comes down to where that animation happened to be when the flash landed, not anything this
+// code is choosing, so the same sequence looks different every time it runs (confirmed against #4786/#4787: same
+// Lights/Pattern, two different-looking recordings). The running lights don't have that animation (they're
+// already steady on once the car's started, not freshly triggered each flash), so Police/Chase on Tails flash
+// parkL/parkR for the actual left-right part, with a brief brake pulse standing in for "the middle light" -
+// brake is still the only address for that third/center light, so the pulse also flashes the main brake lamps
+// each side, not only the middle one
 const FN_PATTERNS = {
-    // police: four flashes then a pause, on whichever light(s) are picked; two lights (Tails, Indicators) bursts
-    // one, then the other, same four-and-pause rhythm each
+    // police: four flashes then a pause, on whichever light(s) are picked; two lights (Indicators) bursts one,
+    // then the other, same four-and-pause rhythm each; Tails bursts parkL, a brake pulse for "the middle", then
+    // parkR, another brake pulse, then the pause (#231)
     police: {
         all: ['high', 'high', 'high', 'high', 'pause', 'pause'], high: ['high', 'high', 'high', 'high', 'pause', 'pause'],
         reverse: ['reverse', 'reverse', 'reverse', 'reverse', 'pause', 'pause'],
-        tails: ['reverse', 'reverse', 'reverse', 'reverse', 'brake', 'brake', 'brake', 'brake', 'pause', 'pause'],
+        tails: ['parkL', 'parkL', 'parkL', 'parkL', 'brake', 'brake', 'parkR', 'parkR', 'parkR', 'parkR', 'brake', 'brake', 'pause', 'pause'],
         ind: ['indL', 'indL', 'indL', 'indL', 'indR', 'indR', 'indR', 'indR', 'pause', 'pause'],
     },
     both: { all: ['high', 'fog'], high: ['high'], reverse: ['reverse'], tails: ['reverse', 'brake'], ind: ['indL', 'indR'] },
     alternate: { all: ['cornL', 'cornR'], high: ['cornL', 'cornR'], reverse: ['reverse'], tails: ['reverse', 'brake'], ind: ['indL', 'indR'] },
     // chase: every light picked, one after another, no pause at all - the closest thing to lights "moving" that a
     // one-function-at-a-time body controller can do; on "All lights" that's a tight loop around the car (compare
-    // SHOW_ORDER, the light show's own slower, pausing-between-passes version of the same idea)
+    // SHOW_ORDER, the light show's own slower, pausing-between-passes version of the same idea). Tails is
+    // parkL/parkR alone (#231) rather than reverse/brake, for the same reason as Police above - a clean left,
+    // right, left, right with nothing retriggering a half-finished fill animation in between
     chase: {
         all: ['high', 'cornL', 'indL', 'brake', 'reverse', 'rearFog', 'indR', 'cornR', 'fog'],
-        high: ['high'], reverse: ['reverse'], tails: ['reverse', 'brake'], ind: ['indL', 'indR'],
+        high: ['high'], reverse: ['reverse'], tails: ['parkL', 'parkR'], ind: ['indL', 'indR'],
     },
     // the parking/position lights left and right in turn: no high beam at all, so none of the headlight unit's own
     // animated power-up (that's the LED matrix reacting to the high beam function, not this one); Park isn't a
