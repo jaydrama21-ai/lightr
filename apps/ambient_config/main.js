@@ -65,7 +65,7 @@ const DAY_NIGHT = { KEINE_AENDERUNG: 0, TAG: 1, NACHT: 2, SIGNAL_UNGUELTIG: 3 };
 /* The strobe's options as the Strobe page has them (its buttons' settings), for its Start and the flasher lever. */
 function strobeOptions(settings, strobe) {
     const cyc = (key, vals, def) => { const v = String(settings.get(key) || def); return vals.indexOf(v) >= 0 ? v : def; };
-    const pattern = ['both', 'alternate', 'police'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
+    const pattern = ['both', 'alternate', 'police', 'park', 'reverse'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
     const o = { lights: strobe && strobe.patterns && settings.get('strobeLights') === 'high' ? 'high' : 'all', pattern,
         rate: settings.get('strobeRate') || 'normal', burst: cyc('policeBurst', ['1', '2', '3', '4'], '4'),
         flashMs: cyc('strobeFlashMs', ['50', '80', '100', '150'], '80'), order: cyc('policeOrder', ['lbr', 'lrb', 'lr'], 'lbr') };
@@ -461,7 +461,7 @@ mgu.run({
         /*
          * Strobe (only for use on private property): the high beams flashed through the headlight units or the body
          * controller (strobe.js), both together or left and right in turn, fast / normal / slow, at most 30 s a press;
-         * Learn high beam finds a headlight's high beam channels; and the light show, 15 s. Only with the setting on and someone in the car;
+         * Learn high beam finds a headlight's high beam channels; and the light show, 15/30/60 s (Length). Only with the setting on and someone in the car;
          * a press arms, a second starts; Stop, the setting off or the car locked and left stops it and gives the lamps back.
          */
         function drawStrobe(cv, t) {
@@ -491,7 +491,7 @@ mgu.run({
                     { primary: leverDriving, key: 'strobe-lever-driving', busy: !strobe });
             }
             if (strobe && strobe.note) cv.text(strobe.note, 44, 248, 18, strobe.noteType === 'warn' ? t.warn : t.dim);
-            const pat = ['both', 'alternate', 'police', 'park'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
+            const pat = ['both', 'alternate', 'police', 'park', 'reverse'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
             const rate = settings.get('strobeRate') || 'normal';
             // the headlight units can flash every front light; the body controller only the high beams
             const lights = strobe && strobe.patterns && settings.get('strobeLights') === 'high' ? 'high' : 'all';
@@ -530,10 +530,12 @@ mgu.run({
             }
             cv.text('Pattern', 44, 346, 18, t.dim);
             // police: one headlight, then the other, the fastest there is (headlight units only)
-            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn'], ['park', 'Park lights']]
-                .filter(([k]) => (k !== 'police' || (strobe && strobe.patterns)) && (k !== 'park' || (strobe && strobe.kind === 'fn')));
+            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn'], ['park', 'Park lights'], ['reverse', 'Reverse lights']]
+                .filter(([k]) => (k !== 'police' || (strobe && strobe.patterns)) && ((k !== 'park' && k !== 'reverse') || (strobe && strobe.kind === 'fn')));
+            // 150/140 fits up to 4 across the panel; past that, narrow the buttons so a 5th still fits
+            const patW = pats.length > 4 ? 134 : 140, patGap = pats.length > 4 ? 139 : 150;
             pats.forEach(([k, n], i) => {
-                G.button(cv, t, 44 + i * 150, 356, 140, 42, n, () => { settings.set('strobePattern', k); return redraw(); }, { primary: pat === k, key: 'pat-' + k });
+                G.button(cv, t, 44 + i * patGap, 356, patW, 42, n, () => { settings.set('strobePattern', k); return redraw(); }, { primary: pat === k, key: 'pat-' + k });
             });
             // the body controller's timed flashes: how often, as flashes a second (Max: as fast as the head unit passes them)
             const timed = strobe && strobe.kind === 'fn';
@@ -556,15 +558,20 @@ mgu.run({
             }, { primary: on, key: 'strobe-go', confirm: !on, busy: !strobe || !strobe.kind || strobe.running === 'show' || strobe.running === 'learn' });
 
             G.panel(cv, t, 776, 44, 800, 468, 'Light show');
-            (strobe && strobe.kind === 'fn' ? ['Every outside light flashes in turn for 15 s: high beam,', 'cornering, fog, indicators, brake, reverse and more.']
-                : strobe && strobe.head ? ['The headlights flash fully on and dark, left and right in', 'turn, for 15 s.']
-                : ['Every lamp output flashes for 15 s, run by the body controller', 'itself (BDC_G11 and BDC_G05).']).forEach((l, i) => cv.text(l, 796, 112 + i * 26, 18, t.dim));
+            const showSecs = cyc('showMs', ['15', '30', '60'], '30');
+            (strobe && strobe.kind === 'fn' ? ['Every outside light flashes in turn for ' + showSecs + ' s: high beam,', 'cornering, fog, indicators, brake, reverse and more.']
+                : strobe && strobe.head ? ['The headlights flash fully on and dark, left and right in', 'turn, for ' + showSecs + ' s.']
+                : ['Every lamp output flashes for ' + showSecs + ' s, run by the body controller', 'itself (BDC_G11 and BDC_G05).']).forEach((l, i) => cv.text(l, 796, 112 + i * 26, 18, t.dim));
             cv.text('Only for use on private property.', 796, 190, 20, t.warn, { font: 'bold' });
             ['Flashing headlights on public roads is illegal and dangerous', 'to other drivers.'].forEach((l, i) => cv.text(l, 796, 220 + i * 26, 18, t.text));
             if (paused) {
                 cv.text(paused.moving ? 'Ambient animation paused while this tab is open.' : 'Ambient light updates paused while this tab is open.', 796, 300, 20, t.warn, { font: 'bold' });
                 cv.text('They carry on when you leave the Strobe tab.', 796, 326, 18, t.dim);
             }
+            cv.text('Length', 796, 360, 18, t.dim);
+            [['15', '15 s'], ['30', '30 s'], ['60', '60 s']].forEach(([k, n], i) => {
+                G.button(cv, t, 796 + i * 150, 372, 140, 42, n, () => { settings.set('showMs', k); return redraw(); }, { primary: showSecs === k, key: 'show-ms-' + k });
+            });
             const srate = settings.get('showRate') === 'fast' ? 'fast' : 'normal';
             cv.text('Speed', 796, 414, 18, t.dim);
             [['fast', 'Fast'], ['normal', 'Normal']].forEach(([k, n], i) => {
@@ -572,7 +579,7 @@ mgu.run({
             });
             const showing = strobe && strobe.running === 'show';
             G.button(cv, t, 1336, 426, 220, 48, showing ? 'Stop' : 'Start show', () => {
-                if (showing) strobe.stop(); else strobe.show({ rate: srate }).catch((e) => log.warn('light show: ' + e));
+                if (showing) strobe.stop(); else strobe.show({ rate: srate, ms: +showSecs * 1000 }).catch((e) => log.warn('light show: ' + e));
                 return redraw();
             }, { primary: showing, key: 'show-go', confirm: !showing, busy: !strobe || !strobe.kind || strobe.running === 'strobe' || strobe.running === 'learn' });
         }

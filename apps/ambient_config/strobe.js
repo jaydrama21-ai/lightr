@@ -84,6 +84,9 @@ const FN_PATTERNS = {
     // the parking/position lights left and right in turn: no high beam at all, so none of the headlight unit's
     // own animated power-up (that's the LED matrix reacting to the high beam function, not this one)
     park: { all: ['parkL', 'parkR'], high: ['parkL', 'parkR'] },
+    // reverse only, on and off: there's one reverse-lamp function (both lamps together, no separate L/R), so the
+    // flash is this one function then a pause, same rhythm as police's high/pause
+    reverse: { all: ['reverse', 'pause'], high: ['reverse', 'pause'] },
 };
 const SHOW_ORDER = ['high', 'cornL', 'cornR', 'fog', 'indL', 'indR', 'parkL', 'parkR', 'brake', 'reverse', 'rearFog', 'ess'];
 const FL_L = 0x07, FL_R = 0x08;
@@ -92,7 +95,7 @@ const DISCO = [0x45, 0x30];
 // at least this long for half a flash (on, or off), by rate; the writes take what they take (~200 ms each)
 const HALF_MS = { fast: 0, normal: 200, slow: 500 };
 const MAX_MS = 30000;            // one press: at most this long
-const SHOW_MS = 15000;           // the light show's length
+const SHOW_MS = 60000;           // the light show's longest length (the on-screen Length buttons pick less than this)
 const KEEP_MS = 2000;            // 3E 00 this often when nothing else is sent
 const LEARN_MS = 15000;          // how long learn() waits for the high beam
 // the LEDs' safety: never more current than the car's own coding gives a channel (its lamp test), never a channel it

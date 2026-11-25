@@ -2,7 +2,7 @@
   "id": "ambient_config",
   "title": "Ambient config",
   "description": "Any colour on the ambient light, animations, and a look for each driving mode",
-  "version": "2.7.21",
+  "version": "2.7.22",
   "vendor": "custom",
   "loggingId": "OAA4",
   "iconGlyph": "ambient",
@@ -213,7 +213,7 @@
       "type": "choice",
       "default": "police",
       "hidden": true,
-      "options": [["police", "Police"], ["both", "Strobe"], ["alternate", "In turn"]]
+      "options": [["police", "Police"], ["both", "Strobe"], ["alternate", "In turn"], ["park", "Park lights"], ["reverse", "Reverse lights"]]
     },
     {
       "key": "strobeLever",
@@ -237,6 +237,14 @@
       "default": "normal",
       "hidden": true,
       "options": [["fast", "Fast"], ["normal", "Normal"]]
+    },
+    {
+      "key": "showMs",
+      "label": "Light show length",
+      "type": "choice",
+      "default": "30",
+      "hidden": true,
+      "options": [["15", "15 s"], ["30", "30 s"], ["60", "60 s"]]
     },
     {
       "key": "drive",
