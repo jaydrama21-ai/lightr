@@ -497,14 +497,16 @@ mgu.run({
                 cv.text(label + (!ok && why ? ' · ' + why : ''), 70, y, 20, ok ? t.text : t.dim);
             });
             cv.text('Only for use on private property.', 44, 222, 20, t.warn, { font: 'bold' });
-            // Lever start / While driving / (dead-code) Learn high beam share this column, stacked; tracked with a
-            // running y so none of them have to know the others' exact height
-            let colY = 150;
+            // Lever start / While driving / Lights off / (dead-code) Learn high beam share this column, stacked;
+            // tracked with a running y so none of them have to know the others' exact height. Pulled up a bit (120
+            // start, 44 apart instead of 150/50) and closer together so even all three rows (lever + while driving +
+            // lights off) clear the Lights row below with room, instead of crowding against it
+            let colY = 120;
             // three quick pulls of the flasher lever while parked start it, three more stop it (lever.js), only while this is on
             const lever = settings.get('strobeLever') === true;
             G.button(cv, t, 480, colY, 220, 42, lever ? 'Lever start: On' : 'Lever start: Off', () => { settings.set('strobeLever', !lever); return redraw(); },
                 { primary: lever, key: 'strobe-lever', busy: !strobe });
-            colY += 50;
+            colY += 44;
             // the strobe itself may run while driving (gateChecks only gates the light show on moving) - the lever is
             // the only way to start it then, since this screen isn't meant to be touched while moving; set the pattern
             // and lights here while parked first, then pull the lever once rolling
@@ -513,7 +515,7 @@ mgu.run({
                 G.button(cv, t, 480, colY, 220, 42, leverDriving ? 'While driving: On' : 'While driving: Off',
                     () => { settings.set('strobeLeverDriving', !leverDriving); return redraw(); },
                     { primary: leverDriving, key: 'strobe-lever-driving', busy: !strobe });
-                colY += 50;
+                colY += 44;
             }
             if (strobe && strobe.note) cv.text(strobe.note, 44, 248, 18, strobe.noteType === 'warn' ? t.warn : t.dim);
             const pat = ['both', 'alternate', 'police', 'chase', 'park'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
@@ -566,7 +568,7 @@ mgu.run({
                 G.button(cv, t, 480, colY, 220, 42, parkOff ? 'Lights off: On' : 'Lights off: Off', () => {
                     settings.set('parkOff', !parkOff); return redraw();
                 }, { primary: parkOff, key: 'strobe-parkoff', busy: !strobe || strobe.running === 'strobe' || strobe.running === 'show' || strobe.running === 'learn' });
-                colY += 50;
+                colY += 44;
             }
             if (strobe && strobe.head) {
                 // which channels are the high beam, seen while it is switched on with the stalk
