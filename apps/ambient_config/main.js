@@ -491,6 +491,9 @@ mgu.run({
                     { primary: leverDriving, key: 'strobe-lever-driving', busy: !strobe });
             }
             if (strobe && strobe.note) cv.text(strobe.note, 44, 248, 18, strobe.noteType === 'warn' ? t.warn : t.dim);
+            // Flash length / Learn high beam share this column (x 520) with Lever start/While driving above;
+            // with the lever on that's two buttons tall (190-282) instead of one (190-232), so this starts lower
+            const flashY = lever ? 304 : 274;
             const pat = ['both', 'alternate', 'police', 'park', 'reverse', 'tails'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
             const rate = settings.get('strobeRate') || 'normal';
             // the headlight units can flash every front light; the body controller only the high beams
@@ -515,15 +518,17 @@ mgu.run({
                     G.button(cv, t, 44 + i * 236, 284, 224, 42, n, () => { settings.set('strobeLights', k); return redraw(); }, { primary: lights === k, key: 'lights-' + k });
                 });
                 // the body controller's flashes take their length for every pattern, not only police (issue #157)
+                // this column (x 520) also holds Lever start/While driving above; With the lever on, that's two
+                // buttons tall (520, 190-282) instead of one (520, 190-232), so this has to start lower then
                 if (strobe.kind === 'fn') {
-                    cv.text('Flash length (tap to change)', 520, 274, 18, t.dim);
-                    G.button(cv, t, 520, 284, 220, 42, flashMs + ' ms', () => { settings.set('strobeFlashMs', next(['50', '80', '100', '150'], flashMs)); return redraw(); }, { key: 'tune-strobeFlashMs' });
+                    cv.text('Flash length (tap to change)', 520, flashY, 18, t.dim);
+                    G.button(cv, t, 520, flashY + 10, 220, 42, flashMs + ' ms', () => { settings.set('strobeFlashMs', next(['50', '80', '100', '150'], flashMs)); return redraw(); }, { key: 'tune-strobeFlashMs' });
                 }
             }
             if (strobe && strobe.head) {
                 // which channels are the high beam, seen while it is switched on with the stalk
                 const learning = strobe.running === 'learn';
-                G.button(cv, t, 520, 284, 220, 42, learning ? 'Stop' : 'Learn high beam', () => {
+                G.button(cv, t, 520, flashY + 10, 220, 42, learning ? 'Stop' : 'Learn high beam', () => {
                     if (learning) strobe.stop(); else strobe.learn().catch((e) => log.warn('strobe: ' + e));
                     return redraw();
                 }, { primary: learning, key: 'strobe-learn', busy: !learning && !!strobe.running });
@@ -531,7 +536,9 @@ mgu.run({
             cv.text('Pattern', 44, 346, 18, t.dim);
             // police: one headlight, then the other, the fastest there is (headlight units only)
             const FN_ONLY_PATS = ['park', 'reverse', 'tails'];
-            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn'], ['park', 'Park lights'], ['reverse', 'Reverse lights'], ['tails', 'Rev + brake']]
+            // short labels: at 6-across (108 px) "Park lights"/"Reverse lights"/"Rev + brake" overflow their own
+            // pill into the next one (measured ~108-137 px of text in an ~88 px slot) - these fit with room to spare
+            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn'], ['park', 'Park'], ['reverse', 'Reverse'], ['tails', 'Tails']]
                 .filter(([k]) => (k !== 'police' || (strobe && strobe.patterns)) && (FN_ONLY_PATS.indexOf(k) < 0 || (strobe && strobe.kind === 'fn')));
             // 150/140 fits up to 4 across the panel; narrower past that so even 6 fit in one row
             const patW = pats.length > 5 ? 108 : pats.length > 4 ? 134 : 140, patGap = pats.length > 5 ? 112 : pats.length > 4 ? 139 : 150;
@@ -569,9 +576,11 @@ mgu.run({
                 cv.text(paused.moving ? 'Ambient animation paused while this tab is open.' : 'Ambient light updates paused while this tab is open.', 796, 300, 20, t.warn, { font: 'bold' });
                 cv.text('They carry on when you leave the Strobe tab.', 796, 326, 18, t.dim);
             }
-            cv.text('Length', 796, 360, 18, t.dim);
+            // a touch higher/shorter than the Strobe panel's equivalent row so its buttons (bottom 400) clear the
+            // Speed label right under it (414) instead of running into it
+            cv.text('Length', 796, 350, 18, t.dim);
             [['15', '15 s'], ['30', '30 s'], ['60', '60 s']].forEach(([k, n], i) => {
-                G.button(cv, t, 796 + i * 150, 372, 140, 42, n, () => { settings.set('showMs', k); return redraw(); }, { primary: showSecs === k, key: 'show-ms-' + k });
+                G.button(cv, t, 796 + i * 150, 362, 140, 38, n, () => { settings.set('showMs', k); return redraw(); }, { primary: showSecs === k, key: 'show-ms-' + k });
             });
             const srate = settings.get('showRate') === 'fast' ? 'fast' : 'normal';
             cv.text('Speed', 796, 414, 18, t.dim);
