@@ -477,23 +477,25 @@ mgu.run({
                 cv.text(label + (!ok && why ? ' · ' + why : ''), 70, y, 20, ok ? t.text : t.dim);
             });
             cv.text('Only for use on private property.', 44, 222, 20, t.warn, { font: 'bold' });
+            // Lever start / While driving / (dead-code) Learn high beam share this column, stacked; tracked with a
+            // running y so none of them have to know the others' exact height
+            let colY = 150;
             // three quick pulls of the flasher lever while parked start it, three more stop it (lever.js), only while this is on
             const lever = settings.get('strobeLever') === true;
-            G.button(cv, t, 520, 190, 220, 42, lever ? 'Lever start: On' : 'Lever start: Off', () => { settings.set('strobeLever', !lever); return redraw(); },
+            G.button(cv, t, 480, colY, 220, 42, lever ? 'Lever start: On' : 'Lever start: Off', () => { settings.set('strobeLever', !lever); return redraw(); },
                 { primary: lever, key: 'strobe-lever', busy: !strobe });
+            colY += 50;
             // the strobe itself may run while driving (gateChecks only gates the light show on moving) - the lever is
             // the only way to start it then, since this screen isn't meant to be touched while moving; set the pattern
             // and lights here while parked first, then pull the lever once rolling
             if (lever) {
                 const leverDriving = settings.get('strobeLeverDriving') === true;
-                G.button(cv, t, 520, 240, 220, 42, leverDriving ? 'While driving: On' : 'While driving: Off',
+                G.button(cv, t, 480, colY, 220, 42, leverDriving ? 'While driving: On' : 'While driving: Off',
                     () => { settings.set('strobeLeverDriving', !leverDriving); return redraw(); },
                     { primary: leverDriving, key: 'strobe-lever-driving', busy: !strobe });
+                colY += 50;
             }
             if (strobe && strobe.note) cv.text(strobe.note, 44, 248, 18, strobe.noteType === 'warn' ? t.warn : t.dim);
-            // Flash length / Learn high beam share this column (x 520) with Lever start/While driving above;
-            // with the lever on that's two buttons tall (190-282) instead of one (190-232), so this starts lower
-            const flashY = lever ? 304 : 274;
             const pat = ['both', 'alternate', 'police', 'park', 'reverse', 'tails'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
             const rate = settings.get('strobeRate') || 'normal';
             // the headlight units can flash every front light; the body controller only the high beams
@@ -504,6 +506,10 @@ mgu.run({
             const burst = cyc('policeBurst', ['1', '2', '3', '4'], '4'), flashMs = cyc('strobeFlashMs', ['50', '80', '100', '150'], '80');
             const order = cyc('policeOrder', ['lbr', 'lrb', 'lr'], 'lbr');
             const next = (vals, v) => vals[(vals.indexOf(v) + 1) % vals.length];
+            // Reverse/Tails join the Lights row below when that row is actually showing (true whenever Police
+            // tuning isn't using its spot instead) so they don't need their own row; if Police tuning has taken
+            // over that row, they fall back to the Pattern row below instead, so they're never unreachable
+            const reverseTailsOnLightsRow = strobe && strobe.patterns && strobe.kind === 'fn' && !policeTune;
             if (policeTune) {
                 cv.text('Police: flashes a burst · flash · order (tap to change)', 44, 274, 18, t.dim);
                 const ORDER_NAMES = { lrb: 'L R Both', lr: 'L R', lbr: 'L Both R' };
@@ -514,21 +520,28 @@ mgu.run({
                 });
             } else if (strobe && strobe.patterns) {
                 cv.text('Lights', 44, 274, 18, t.dim);
-                [['all', 'All lights'], ['high', 'High beam']].forEach(([k, n], i) => {
-                    G.button(cv, t, 44 + i * 236, 284, 224, 42, n, () => { settings.set('strobeLights', k); return redraw(); }, { primary: lights === k, key: 'lights-' + k });
-                });
+                // All lights / High beam, then on a body-controller car Flash length, Reverse and Tails share this
+                // row too - 134/139 is the same tier the Pattern row below uses at 5 across, and the text ("ALL
+                // LIGHTS" 93.5 px, "REVERSE" 72.9 px, ...) fits it with room to spare
+                const row1 = [['lights-all', 'All lights', lights === 'all', () => { settings.set('strobeLights', 'all'); return redraw(); }],
+                    ['lights-high', 'High beam', lights === 'high', () => { settings.set('strobeLights', 'high'); return redraw(); }]];
                 // the body controller's flashes take their length for every pattern, not only police (issue #157)
-                // this column (x 520) also holds Lever start/While driving above; With the lever on, that's two
-                // buttons tall (520, 190-282) instead of one (520, 190-232), so this has to start lower then
                 if (strobe.kind === 'fn') {
-                    cv.text('Flash length (tap to change)', 520, flashY, 18, t.dim);
-                    G.button(cv, t, 520, flashY + 10, 220, 42, flashMs + ' ms', () => { settings.set('strobeFlashMs', next(['50', '80', '100', '150'], flashMs)); return redraw(); }, { key: 'tune-strobeFlashMs' });
+                    row1.push(['tune-strobeFlashMs', flashMs + ' ms', false,
+                        () => { settings.set('strobeFlashMs', next(['50', '80', '100', '150'], flashMs)); return redraw(); }]);
+                    if (reverseTailsOnLightsRow) {
+                        row1.push(['pat-reverse', 'Reverse', pat === 'reverse', () => { settings.set('strobePattern', 'reverse'); return redraw(); }]);
+                        row1.push(['pat-tails', 'Tails', pat === 'tails', () => { settings.set('strobePattern', 'tails'); return redraw(); }]);
+                    }
                 }
+                row1.forEach(([key, label, primary, act], i) => {
+                    G.button(cv, t, 44 + i * 139, 284, 134, 42, label, act, { primary, key });
+                });
             }
             if (strobe && strobe.head) {
                 // which channels are the high beam, seen while it is switched on with the stalk
                 const learning = strobe.running === 'learn';
-                G.button(cv, t, 520, flashY + 10, 220, 42, learning ? 'Stop' : 'Learn high beam', () => {
+                G.button(cv, t, 480, colY, 220, 42, learning ? 'Stop' : 'Learn high beam', () => {
                     if (learning) strobe.stop(); else strobe.learn().catch((e) => log.warn('strobe: ' + e));
                     return redraw();
                 }, { primary: learning, key: 'strobe-learn', busy: !learning && !!strobe.running });
@@ -536,11 +549,13 @@ mgu.run({
             cv.text('Pattern', 44, 346, 18, t.dim);
             // police: one headlight, then the other, the fastest there is (headlight units only)
             const FN_ONLY_PATS = ['park', 'reverse', 'tails'];
-            // short labels: at 6-across (108 px) "Park lights"/"Reverse lights"/"Rev + brake" overflow their own
-            // pill into the next one (measured ~108-137 px of text in an ~88 px slot) - these fit with room to spare
-            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn'], ['park', 'Park'], ['reverse', 'Reverse'], ['tails', 'Tails']]
+            // Reverse/Tails are already on the Lights row above in the common case; only the Police-tuning
+            // fallback needs them here too, and then they're back to short labels - 6 across (108 px) is too
+            // narrow for "Reverse lights"/"Rev + brake" (measured 137/106 px of text in an 88 px slot)
+            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn'], ['park', 'Park']]
+                .concat(reverseTailsOnLightsRow ? [] : [['reverse', 'Reverse'], ['tails', 'Tails']])
                 .filter(([k]) => (k !== 'police' || (strobe && strobe.patterns)) && (FN_ONLY_PATS.indexOf(k) < 0 || (strobe && strobe.kind === 'fn')));
-            // 150/140 fits up to 4 across the panel; narrower past that so even 6 fit in one row
+            // 150/140 fits up to 4 across the panel; narrower past that for the rare 6-across fallback
             const patW = pats.length > 5 ? 108 : pats.length > 4 ? 134 : 140, patGap = pats.length > 5 ? 112 : pats.length > 4 ? 139 : 150;
             pats.forEach(([k, n], i) => {
                 G.button(cv, t, 44 + i * patGap, 356, patW, 42, n, () => { settings.set('strobePattern', k); return redraw(); }, { primary: pat === k, key: 'pat-' + k });
