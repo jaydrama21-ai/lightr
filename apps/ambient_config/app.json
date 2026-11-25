@@ -2,7 +2,7 @@
   "id": "ambient_config",
   "title": "Ambient config",
   "description": "Any colour on the ambient light, animations, and a look for each driving mode",
-  "version": "2.7.30",
+  "version": "2.7.31",
   "vendor": "custom",
   "loggingId": "OAA4",
   "iconGlyph": "ambient",
@@ -48,6 +48,10 @@
       "_optional": "the car's speed: driven (for a car that does not say it is locked and left), and the light show only standing still",
       "statusCarSpeed2": "rs",
       "statusLightStatus": "rs"
+    },
+    "de.bmw.infotainment.vehicle.CDS": {
+      "_optional": "the engine running: Police/Chase on Tails need the running lights actually powered",
+      "statusEngineStatus": "rs"
     }
   },
   "screens": [

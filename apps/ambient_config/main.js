@@ -188,9 +188,21 @@ async function background(bg) {
     const chFile = bg.dataDir ? path.join(bg.dataDir, 'strobe_channels.json') : null;
     let channels = null;
     try { channels = chFile ? JSON.parse(fs.readFileSync(chFile, 'utf8')) : null; } catch (e) { channels = null; }
+    // Police/Chase on Tails needs the running lights actually powered (parkL/parkR do nothing with the car off,
+    // the bulb has no accessory power even though the diagnostic write itself is acknowledged either way) - the
+    // engine running is the nearest thing to "the car's on" this app already has a signal for (#231); starts true
+    // so the common case (already driving around) isn't second-guessed before the first reading arrives
+    const engine = { on: true };
+    signals.watch('de.bmw.infotainment.vehicle.CDS', '1', {
+        statusEngineStatus: (v) => {
+            const s = v && v.statusEngineRunDrive;
+            if (s === undefined) return;
+            engine.on = s === 'MOTOR_LAEUFT' || s === 'MOTOR_STARTET' || s === 1 || s === 2;
+        },
+    }, log).catch((e) => log.warn('engine running: ' + (e && e.message || e)));
     // while the strobe runs, the ambient lights stop writing (the gateway takes one request at a time: theirs in
     // between got the strobe's refused)
-    const strobe = new Strobe({ diag, log, allowed: gate, channels, hold: (on) => lights.hold('strobe', on) });
+    const strobe = new Strobe({ diag, log, allowed: gate, channels, hold: (on) => lights.hold('strobe', on), carOn: () => engine.on });
     strobe.on('learned', (c) => { try { if (chFile) fs.writeFileSync(chFile, JSON.stringify(c)); } catch (e) { log.warn('strobe: ' + e); } });
     const findStrobe = () => {
         if ((settings.get('strobe') === true || settings.get('parkOff') === true) && !strobe.kind) strobe.find().catch((e) => log.warn('strobe: ' + e));

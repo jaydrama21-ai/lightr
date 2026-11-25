@@ -124,6 +124,15 @@ const FN_PATTERNS = {
     // "Lights" choice itself, so every key here is the same fixed pair
     park: { all: ['parkL', 'parkR'], high: ['parkL', 'parkR'], reverse: ['parkL', 'parkR'], tails: ['parkL', 'parkR'], ind: ['parkL', 'parkR'] },
 };
+// Police/Chase on Tails read from here instead, with the car's engine not running (carOn() false, #231): parkL/
+// parkR do nothing without the running lights' own accessory power, even though the diagnostic write to them is
+// acknowledged either way, so there is no reading back a failure - the car has to say so itself (statusEngineStatus
+// in main.js). Falls back to the same reverse/brake toggle "Strobe"/"In turn" always used on Tails: no real left
+// or right exists without parkL/parkR, so this can only be the two full-width colours, not the sweep
+const FN_PATTERNS_CAR_OFF = {
+    police: { tails: ['reverse', 'reverse', 'reverse', 'reverse', 'brake', 'brake', 'brake', 'brake', 'pause', 'pause'] },
+    chase: { tails: ['reverse', 'brake'] },
+};
 // every outside light flashes in turn, except parkL/parkR (the running lights / main tails) - left out so
 // aftermarket tails with their own power-on animation don't replay it on every pass through the show
 const SHOW_ORDER = ['high', 'cornL', 'cornR', 'fog', 'indL', 'indR', 'brake', 'reverse', 'rearFog', 'ess'];
@@ -163,6 +172,9 @@ class Strobe extends EventEmitter {
         this.running = null; this.note = null; this.noteType = 'dim'; this._stop = false;
         this.hold = o.hold || null;              // hold(on) -> Promise: the app's other writes to the body controller
         this._starting = false;
+        // whether the car's on (parkL/parkR actually powered); starts true so a reading that never arrives doesn't
+        // silently break the common case (#231)
+        this.carOn = o.carOn || (() => true);
     }
 
     /** fn() run with the app's other writes to the body controller held (hold), let go when it has ended. */
@@ -557,7 +569,9 @@ class Strobe extends EventEmitter {
             const flash = { on: o && o.flashMs ? flashTicks(o.flashMs) : base.on, gap: o && o.every != null ? Math.max(0, Math.min(2000, +o.every || 0)) : base.gap };
             if ((!o || !o.pattern || o.pattern === 'police') && this.mask) return this._runPolice(flash, MAX_MS, o);
             const lightsKey = o && LIGHTS_KEYS.indexOf(o.lights) >= 0 ? o.lights : 'all';
-            return this._runFn(pat[lightsKey] || pat.all, flash, MAX_MS, 'Strobe');
+            const offPat = !this.carOn() && FN_PATTERNS_CAR_OFF[o && o.pattern];
+            const seq = (offPat && offPat[lightsKey]) || pat[lightsKey] || pat.all;
+            return this._runFn(seq, flash, MAX_MS, 'Strobe');
         }
         const head = !!this.head;
         // police: one headlight flashes, then the other, one write each (the fastest there is: ~200 ms a write)
