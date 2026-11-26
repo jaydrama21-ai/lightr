@@ -842,6 +842,7 @@ class Strobe extends EventEmitter {
         this.running = 'testhigh'; this._stop = false;
         const left = SIDES[0];
         let end = null, tried = 0;
+        const lit = [];   // modes the headlight module actually accepted (logged, not just shown on screen)
         try {
             const r = await this._ask(left, 0x10, [0x03]);
             if (!r || r[0] !== 0x50) { end = ['Test high beam: the left headlight refused the diagnostic session', 'warn']; return; }
@@ -854,10 +855,16 @@ class Strobe extends EventEmitter {
                 const res = await this._lv(left, fn, LV_SECS);
                 tried++;
                 if (res !== true) { this.log.info('strobe: test high beam ' + hex([fn]) + ' refused (' + res + ')'); continue; }
+                lit.push(hex([fn]));
+                this.log.info('strobe: test high beam ' + hex([fn]) + ' accepted - watch for which one lit up brightest');
                 const t0 = this.now();
                 while (!this._stop && this.now() - t0 < LV_SECS * 1000 + 500) await this.sleep(200);
             }
-            if (!end) end = [this._stop ? 'Test high beam stopped' : tried ? 'Test high beam done - which mode, if any, looked brighter?' : 'Test high beam: every mode refused', 'dim'];
+            if (!end) {
+                end = [this._stop ? 'Test high beam stopped'
+                    : lit.length ? 'Test high beam done - accepted: ' + lit.join(', ') + ' - which one looked brighter?'
+                    : 'Test high beam: every mode refused', 'dim'];
+            }
         } finally {
             await this._lv(left, 0, 0);
             await this._ask(left, 0x10, [0x01]);
