@@ -41,7 +41,7 @@
  * before a strobe, light show or learn starts, hold(false) once it has ended.
  *
  *   const s = new Strobe({ diag, log, allowed, channels, hold });  await s.find();   s.kind -> 'flm' | 'fle' | 'bdc' | 'g05' | null
- *   s.start({ lights: 'all' | 'high' | 'reverse' | 'tails' | 'ind', pattern: 'police' | 'both' | 'alternate' | 'chase' | 'park',
+ *   s.start({ lights: 'all' | 'high' | 'reverse' | 'tails' | 'ind', pattern: 'police' | 'both' | 'alternate' | 'chase',
  *             rate: 'fast' | 'normal' | 'slow' })   s.show()   s.learn()   s.off()   s.stop()
  *   s.running -> 'strobe' | 'show' | 'learn' | 'off' | null       s.note       s.on('change', fn)   s.on('learned', fn(channels))
  */
@@ -123,10 +123,10 @@ const FN_PATTERNS = {
         all: ['high', 'cornL', 'indL', 'brake', 'reverse', 'rearFog', 'indR', 'cornR', 'fog'],
         high: ['high'], reverse: ['reverse'], tails: ['reverse', 'brake'], ind: ['indL', 'indR'],
     },
-    // the parking/position lights left and right in turn: no high beam at all, so none of the headlight unit's own
-    // animated power-up (that's the LED matrix reacting to the high beam function, not this one); Park isn't a
-    // "Lights" choice itself, so every key here is the same fixed pair
-    park: { all: ['parkL', 'parkR'], high: ['parkL', 'parkR'], reverse: ['parkL', 'parkR'], tails: ['parkL', 'parkR'], ind: ['parkL', 'parkR'] },
+    // Park (parkL/parkR left and right in turn) dropped (#244): same root problem as #238 - every flash of
+    // parkL/parkR replays the tail's own startup animation, so this pattern could never get past "turning on"
+    // and settle into an actual left/right blink. No fallback left in its place: there's no other independent
+    // per-side address to flash without parkL/parkR, so there's nothing this pattern could do instead.
 };
 // every outside light flashes in turn, except parkL/parkR (the running lights / main tails) - left out so
 // aftermarket tails with their own power-on animation don't replay it on every pass through the show
@@ -582,10 +582,17 @@ class Strobe extends EventEmitter {
             if ((!o || !o.pattern || o.pattern === 'police') && this.mask) return this._runPolice(flash, MAX_MS, o);
             const lightsKey = o && LIGHTS_KEYS.indexOf(o.lights) >= 0 ? o.lights : 'all';
             const seq = pat[lightsKey] || pat.all;
-            // hold parkL/parkR on for the run only when the pattern itself doesn't already flash them (the
-            // dedicated Park pattern does, on purpose - see FN_PATTERNS.park - and the hold would only fight it)
+            // no pattern here flashes parkL/parkR itself any more (Park's gone - #244), so this always holds them
+            // on for a Tails run now; kept as a seq check anyway in case a future pattern reaches for them again
             const holdPark = lightsKey === 'tails' && !seq.includes('parkL') && !seq.includes('parkR');
-            return this._runFn(seq, flash, MAX_MS, 'Strobe', holdPark);
+            // unlimited (#245): no bulb/current risk flashing the body controller's own lamp functions this way
+            // (unlike _runPolice's real LED-matrix current, there's nothing here to overheat), so o.unlimited just
+            // skips the per-run time cap and runs until stop(), the settings toggle, or allowed() says no instead -
+            // the budget/rest check (_resting(), above in _why()) still has to pass before a run can start, but
+            // doesn't cut one short once it's going, so a long enough unlimited run can itself blow past it; the
+            // next run after that waits out whatever _rest() sets from the run's real length, same as any other run
+            const ms = o && o.unlimited ? Infinity : MAX_MS;
+            return this._runFn(seq, flash, ms, 'Strobe', holdPark);
         }
         const head = !!this.head;
         // police: one headlight flashes, then the other, one write each (the fastest there is: ~200 ms a write)

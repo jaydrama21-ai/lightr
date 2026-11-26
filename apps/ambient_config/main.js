@@ -65,7 +65,7 @@ const DAY_NIGHT = { KEINE_AENDERUNG: 0, TAG: 1, NACHT: 2, SIGNAL_UNGUELTIG: 3 };
 /* The strobe's options as the Strobe page has them (its buttons' settings), for its Start and the flasher lever. */
 function strobeOptions(settings, strobe) {
     const cyc = (key, vals, def) => { const v = String(settings.get(key) || def); return vals.indexOf(v) >= 0 ? v : def; };
-    const pattern = ['both', 'alternate', 'police', 'chase', 'park'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
+    const pattern = ['both', 'alternate', 'police', 'chase'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
     // Reverse/Tails are a "lights" choice like All lights/High beam, not their own pattern (#226) - every pattern can
     // run over them; only the body controller's light functions have a reverse or brake function to pick, though
     const lightsKeys = strobe && strobe.kind === 'fn' ? LIGHTS_KEYS : ['all', 'high'];
@@ -73,7 +73,12 @@ function strobeOptions(settings, strobe) {
     const o = { lights, pattern,
         rate: settings.get('strobeRate') || 'normal', burst: cyc('policeBurst', ['1', '2', '3', '4'], '4'),
         flashMs: cyc('strobeFlashMs', ['50', '80', '100', '150'], '80'), order: cyc('policeOrder', ['lbr', 'lrb', 'lr'], 'lbr') };
-    if (strobe && strobe.kind === 'fn') o.every = +cyc('strobeEvery', ['0', '250', '333', '500', '1000'], '0');
+    if (strobe && strobe.kind === 'fn') {
+        o.every = +cyc('strobeEvery', ['0', '250', '333', '500', '1000'], '0');
+        // unlimited (#245): the body controller's own lamp functions, no LED current/heat involved, so no run-length
+        // safety reason to cap these the way the headlight LED matrix strobe (_runPolice) has to be
+        o.unlimited = settings.get('strobeUnlimited') === true;
+    }
     return o;
 }
 
@@ -530,7 +535,7 @@ mgu.run({
                 colY += 44;
             }
             if (strobe && strobe.note) cv.text(strobe.note, 44, 248, 18, strobe.noteType === 'warn' ? t.warn : t.dim);
-            const pat = ['both', 'alternate', 'police', 'chase', 'park'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
+            const pat = ['both', 'alternate', 'police', 'chase'].indexOf(settings.get('strobePattern')) >= 0 ? settings.get('strobePattern') : 'police';
             const rate = settings.get('strobeRate') || 'normal';
             // the headlight units can flash every front light; the body controller can also pick reverse, or
             // reverse+brake together ("Tails") - whichever pattern below is picked runs over whichever of these
@@ -581,6 +586,14 @@ mgu.run({
                     settings.set('parkOff', !parkOff); return redraw();
                 }, { primary: parkOff, key: 'strobe-parkoff', busy: !strobe || strobe.running === 'strobe' || strobe.running === 'show' || strobe.running === 'learn' });
                 colY += 44;
+                // no run-length cap (#245): these are the body controller's own lamp functions, not the headlight
+                // LED matrix _runPolice has to watch the temperature of, so there's nothing here an unlimited run
+                // risks overheating - it just goes until Stop, the settings toggle, or allowed() says no
+                const unlimited = settings.get('strobeUnlimited') === true;
+                G.button(cv, t, 480, colY, 220, 42, unlimited ? 'Unlimited: On' : 'Unlimited: Off', () => {
+                    settings.set('strobeUnlimited', !unlimited); return redraw();
+                }, { primary: unlimited, key: 'strobe-unlimited', busy: !strobe });
+                colY += 44;
             }
             if (strobe && strobe.head) {
                 // which channels are the high beam, seen while it is switched on with the stalk
@@ -592,9 +605,10 @@ mgu.run({
             }
             cv.text('Pattern', 44, 346, 18, t.dim);
             // chase: fn-only (it just cycles light functions, same as the others, but no headlight-unit equivalent
-            // exists for it); park likewise
-            const FN_ONLY_PATS = ['park', 'chase'];
-            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn'], ['chase', 'Chase'], ['park', 'Park']]
+            // exists for it). Park (parkL/parkR in turn) removed (#244): every flash of parkL/parkR replays the
+            // tail's own startup animation, so it could never settle into an actual blink - see FN_PATTERNS' comment
+            const FN_ONLY_PATS = ['chase'];
+            const pats = [['police', 'Police'], ['both', 'Strobe'], ['alternate', 'In turn'], ['chase', 'Chase']]
                 .filter(([k]) => (k !== 'police' || (strobe && strobe.patterns)) && (FN_ONLY_PATS.indexOf(k) < 0 || (strobe && strobe.kind === 'fn')));
             const patW = pats.length > 5 ? 108 : pats.length > 4 ? 134 : 140, patGap = pats.length > 5 ? 112 : pats.length > 4 ? 139 : 150;
             pats.forEach(([k, n], i) => {
