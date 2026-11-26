@@ -93,7 +93,16 @@ const LIGHTS_KEYS = ['all', 'high', 'reverse', 'tails', 'ind'];
 // pattern intended (confirmed on video: Police and Chase both just looked like the running lights switching on).
 // Tails is reverse + brake only now, every pattern, same as "both"/"alternate" always were - no real left/right
 // exists without parkL/parkR, so this is the two full-width colours, not a sweep, but at least every flash is a
-// real, visible transition instead of a silent no-op or an unwanted startup replay
+// real, visible transition instead of a silent no-op or an unwanted startup replay.
+//   Leaving parkL/parkR out of the pattern entirely (#238) traded that bug for a new one (#243): holding the
+// extended diagnostic session open for the whole run of brake/reverse flashes, with nothing ever asserting
+// parkL/parkR, leaves the running lights with no active "on" of their own for that whole stretch, and on this
+// car they read as off for the whole Strobe run instead of just going back to the car's own control - confirmed
+// on video (brake/reverse flashing fine, running lights dark throughout, not just between flashes). Fixed by
+// _runFn's holdPark: one request each for parkL and parkR, held on for PARK_HOLD_TICKS (comfortably longer than
+// any Strobe run) right when the session opens, not repeated per step - a single "on" rather than the flashed
+// re-assert that caused #238, so the lens settles once at the start and then just stays lit under the brake/
+// reverse flashing instead of blinking or going dark
 const FN_PATTERNS = {
     // police: four flashes then a pause, on whichever light(s) are picked; two lights (Indicators) bursts one,
     // then the other, same four-and-pause rhythm each; Tails bursts brake, then reverse, then the pause
@@ -128,6 +137,9 @@ const DISCO = [0x45, 0x30];
 // at least this long for half a flash (on, or off), by rate; the writes take what they take (~200 ms each)
 const HALF_MS = { fast: 0, normal: 200, slow: 500 };
 const MAX_MS = 30000;            // one press: at most this long
+// parkL/parkR held "on" for this many ticks (10 ms each) in one request, covering a whole Strobe run (MAX_MS) with
+// margin - see the long comment by FN_PATTERNS for why this is one request, not a flash repeated in the pattern
+const PARK_HOLD_TICKS = 3500;
 const SHOW_MS = 60000;           // the light show's longest length (the on-screen Length buttons pick less than this)
 const KEEP_MS = 2000;            // 3E 00 this often when nothing else is sent
 const LEARN_MS = 15000;          // how long learn() waits for the high beam
@@ -409,13 +421,24 @@ class Strobe extends EventEmitter {
         return r && r[0] === 0x6E ? true : r ? 'NRC ' + hex([r[2]]) : 'no answer';
     }
 
-    /** Flash the functions in seq round and round until stop, ms, a refusal or allowed() saying no. */
-    async _runFn(seq, flash, ms, what) {
+    /**
+     * Flash the functions in seq round and round until stop, ms, a refusal or allowed() saying no. holdPark: also
+     * hold parkL/parkR on (one request each, not flashed) for as long as the session stays open, so the running
+     * lights stay lit under the pattern instead of going dark for the whole run - see the long comment by
+     * FN_PATTERNS (#243).
+     */
+    async _runFn(seq, flash, ms, what, holdPark) {
         const t0 = this.now(), used = {};
-        let step = 0, end = null;
+        let step = 0, end = null, parked = false;
         try {
             const r = await this._ask(BDC, 0x10, [0x03]);
             if (!r || r[0] !== 0x50) { end = [what + ': the body controller refused the diagnostic session', 'warn']; return; }
+            if (holdPark) {
+                const rl = await this._fn('parkL', PARK_HOLD_TICKS), rr = await this._fn('parkR', PARK_HOLD_TICKS);
+                parked = rl === true || rr === true;
+                // a refusal here isn't fatal to the pattern itself - the flashing still runs, just without the
+                // running lights held on, same as before this fix
+            }
             while (!this._stop) {
                 const stopWhy = this.allowed(this.running);
                 if (stopWhy) { end = [what + ' stopped: ' + stopWhy, 'warn']; break; }
@@ -433,6 +456,9 @@ class Strobe extends EventEmitter {
             if (!end) end = [what + ' stopped', 'dim'];
         } finally {
             for (const name of Object.keys(used)) await this._fn(name, 0);
+            // let go of the hold explicitly rather than just letting it time out: hands parkL/parkR straight back
+            // to the car's own control, which keeps them lit anyway while the engine's running - no gap, no replay
+            if (parked) { await this._fn('parkL', 0); await this._fn('parkR', 0); }
             await this._ask(BDC, 0x10, [0x01]);
             this.running = null;
             if (step > 0) this._rest(t0);
@@ -556,7 +582,10 @@ class Strobe extends EventEmitter {
             if ((!o || !o.pattern || o.pattern === 'police') && this.mask) return this._runPolice(flash, MAX_MS, o);
             const lightsKey = o && LIGHTS_KEYS.indexOf(o.lights) >= 0 ? o.lights : 'all';
             const seq = pat[lightsKey] || pat.all;
-            return this._runFn(seq, flash, MAX_MS, 'Strobe');
+            // hold parkL/parkR on for the run only when the pattern itself doesn't already flash them (the
+            // dedicated Park pattern does, on purpose - see FN_PATTERNS.park - and the hold would only fight it)
+            const holdPark = lightsKey === 'tails' && !seq.includes('parkL') && !seq.includes('parkR');
+            return this._runFn(seq, flash, MAX_MS, 'Strobe', holdPark);
         }
         const head = !!this.head;
         // police: one headlight flashes, then the other, one write each (the fastest there is: ~200 ms a write)
