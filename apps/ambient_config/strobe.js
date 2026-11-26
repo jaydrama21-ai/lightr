@@ -85,53 +85,39 @@ const LIGHTS_KEYS = ['all', 'high', 'reverse', 'tails', 'ind'];
 // Each is filled in for every key in LIGHTS_KEYS so any pattern can run over any of them (#226) - "both"/"alternate"/
 // "chase" only really differ once more than one light's selected (Tails, Indicators), since a single light has
 // nothing to alternate or chase between.
-//   Tails under Police/Chase is the one exception that does reach for parkL/parkR (#231): reverse and brake only
-// have the one function code for both sides together, so every reverse/brake flash just retriggers the tail
-// light's own built-in sequential "coming home" fill animation on both sides at once - which side looks lit at
-// any instant then comes down to where that animation happened to be when the flash landed, not anything this
-// code is choosing, so the same sequence looks different every time it runs (confirmed against #4786/#4787: same
-// Lights/Pattern, two different-looking recordings). The running lights don't have that animation (they're
-// already steady on once the car's started, not freshly triggered each flash), so Police/Chase on Tails flash
-// parkL/parkR for the actual left-right part, with a brief brake pulse standing in for "the middle light" -
-// brake is still the only address for that third/center light, so the pulse also flashes the main brake lamps
-// each side, not only the middle one. The order is middle, right, left, repeating - not side, middle, side,
-// middle - so it travels one way round instead of bouncing back and forth
+//   Tails on Police/Chase used to reach for parkL/parkR for a left-right feel (#231), with a brief brake pulse
+// standing in for "the middle light" (brake is the only address for that third/center light). Dropped (#238):
+// parkL/parkR are the running lights, already steady on once the car's started - flashing them doesn't blink
+// anything, it just re-asserts "on" to a bulb that was never off, and on this aftermarket tail that re-assert is
+// read as a fresh power-up, so the lens replays its own startup/"welcome" animation instead of doing anything the
+// pattern intended (confirmed on video: Police and Chase both just looked like the running lights switching on).
+// Tails is reverse + brake only now, every pattern, same as "both"/"alternate" always were - no real left/right
+// exists without parkL/parkR, so this is the two full-width colours, not a sweep, but at least every flash is a
+// real, visible transition instead of a silent no-op or an unwanted startup replay
 const FN_PATTERNS = {
     // police: four flashes then a pause, on whichever light(s) are picked; two lights (Indicators) bursts one,
-    // then the other, same four-and-pause rhythm each; Tails bursts the middle (a brake pulse), then right
-    // (parkR), then left (parkL), then the pause (#231)
+    // then the other, same four-and-pause rhythm each; Tails bursts brake, then reverse, then the pause
     police: {
         all: ['high', 'high', 'high', 'high', 'pause', 'pause'], high: ['high', 'high', 'high', 'high', 'pause', 'pause'],
         reverse: ['reverse', 'reverse', 'reverse', 'reverse', 'pause', 'pause'],
-        tails: ['brake', 'brake', 'brake', 'brake', 'parkR', 'parkR', 'parkR', 'parkR', 'parkL', 'parkL', 'parkL', 'parkL', 'pause', 'pause'],
+        tails: ['brake', 'brake', 'brake', 'brake', 'reverse', 'reverse', 'reverse', 'reverse', 'pause', 'pause'],
         ind: ['indL', 'indL', 'indL', 'indL', 'indR', 'indR', 'indR', 'indR', 'pause', 'pause'],
     },
     both: { all: ['high', 'fog'], high: ['high'], reverse: ['reverse'], tails: ['reverse', 'brake'], ind: ['indL', 'indR'] },
     alternate: { all: ['cornL', 'cornR'], high: ['cornL', 'cornR'], reverse: ['reverse'], tails: ['reverse', 'brake'], ind: ['indL', 'indR'] },
     // chase: every light picked, one after another, no pause at all - the closest thing to lights "moving" that a
     // one-function-at-a-time body controller can do; on "All lights" that's a tight loop around the car (compare
-    // SHOW_ORDER, the light show's own slower, pausing-between-passes version of the same idea). Tails is a brake
-    // pulse for "the middle", then parkR, then parkL (#231) rather than reverse/brake, for the same reason as
-    // Police above - a clean middle, right, left travelling one way round instead of bouncing, with nothing
-    // retriggering a half-finished fill animation in between; no pause between laps, same as every other Chase
-    // entry here
+    // SHOW_ORDER, the light show's own slower, pausing-between-passes version of the same idea). Tails is the same
+    // reverse/brake toggle as "both"/"alternate", just with no pause between laps, same as every other Chase entry
+    // here
     chase: {
         all: ['high', 'cornL', 'indL', 'brake', 'reverse', 'rearFog', 'indR', 'cornR', 'fog'],
-        high: ['high'], reverse: ['reverse'], tails: ['brake', 'parkR', 'parkL'], ind: ['indL', 'indR'],
+        high: ['high'], reverse: ['reverse'], tails: ['reverse', 'brake'], ind: ['indL', 'indR'],
     },
     // the parking/position lights left and right in turn: no high beam at all, so none of the headlight unit's own
     // animated power-up (that's the LED matrix reacting to the high beam function, not this one); Park isn't a
     // "Lights" choice itself, so every key here is the same fixed pair
     park: { all: ['parkL', 'parkR'], high: ['parkL', 'parkR'], reverse: ['parkL', 'parkR'], tails: ['parkL', 'parkR'], ind: ['parkL', 'parkR'] },
-};
-// Police/Chase on Tails read from here instead, with the car's engine not running (carOn() false, #231): parkL/
-// parkR do nothing without the running lights' own accessory power, even though the diagnostic write to them is
-// acknowledged either way, so there is no reading back a failure - the car has to say so itself (statusEngineStatus
-// in main.js). Falls back to the same reverse/brake toggle "Strobe"/"In turn" always used on Tails: no real left
-// or right exists without parkL/parkR, so this can only be the two full-width colours, not the sweep
-const FN_PATTERNS_CAR_OFF = {
-    police: { tails: ['reverse', 'reverse', 'reverse', 'reverse', 'brake', 'brake', 'brake', 'brake', 'pause', 'pause'] },
-    chase: { tails: ['reverse', 'brake'] },
 };
 // every outside light flashes in turn, except parkL/parkR (the running lights / main tails) - left out so
 // aftermarket tails with their own power-on animation don't replay it on every pass through the show
@@ -569,8 +555,7 @@ class Strobe extends EventEmitter {
             const flash = { on: o && o.flashMs ? flashTicks(o.flashMs) : base.on, gap: o && o.every != null ? Math.max(0, Math.min(2000, +o.every || 0)) : base.gap };
             if ((!o || !o.pattern || o.pattern === 'police') && this.mask) return this._runPolice(flash, MAX_MS, o);
             const lightsKey = o && LIGHTS_KEYS.indexOf(o.lights) >= 0 ? o.lights : 'all';
-            const offPat = !this.carOn() && FN_PATTERNS_CAR_OFF[o && o.pattern];
-            const seq = (offPat && offPat[lightsKey]) || pat[lightsKey] || pat.all;
+            const seq = pat[lightsKey] || pat.all;
             return this._runFn(seq, flash, MAX_MS, 'Strobe');
         }
         const head = !!this.head;
