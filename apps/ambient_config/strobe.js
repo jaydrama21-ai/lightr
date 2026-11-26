@@ -62,6 +62,16 @@ const CHANNELS = [0x30, 0x00];
 const FN = [0xD5, 0x42];
 const F = { high: 0x05, indL: 0x06, indR: 0x07, fog: 0x08, cornL: 0x09, cornR: 0x0A, brake: 0x0C, ess: 0x0D, rearFog: 0x0E,
     reverse: 0x0F, parkL: 0x10, parkR: 0x11 };
+// FLM_FUNKTION_LICHTVERTEILUNG: 0x2E on 0xD6DC, a light function in ONE headlight module itself (0x43/0x44) for a
+// time in seconds (0: off) - unlike F.high above (LEUCHTEN_FUNKTION, 0xD542), which only reaches the body controller
+// and, per this car's own log (#246: no mask found, so no real per-channel headlight control either), may not be
+// driving the headlight's own high-beam mode at all. Candidates borrowed from eroobeeroo/idrive7-apps' Light Show
+// app (apps/light_show/lamps.js, a different platform - a G05, not this G20 - so unconfirmed here): on their car,
+// Fernlichtblinken (0x45) was taken by the module but lit nothing, while Fernlicht Modus 1a/2a/3a (0x0F/0x11/0x13)
+// all did - skip the known dead end, try the three that worked there
+const LV_DID = [0xD6, 0xDC];
+const HIGH_BEAM_TRIES = [0x0F, 0x11, 0x13];
+const LV_SECS = 3;               // each candidate held this long, then the module turns it off by itself
 // a flash's length (10 ms) and the least time from one flash to the next, by rate; never more than 150 ms lit, so
 // nothing stays on if the app goes
 const FLASH = { fast: { on: 8, gap: 0 }, normal: { on: 12, gap: 120 }, slow: { on: 15, gap: 350 } };
@@ -418,6 +428,12 @@ class Strobe extends EventEmitter {
     /** One light function on for ticks x 10 ms (0: off). */
     async _fn(name, ticks) {
         const r = await this._ask(BDC, 0x2E, FN.concat([0x00, F[name], (ticks >> 8) & 0xFF, ticks & 0xFF]));
+        return r && r[0] === 0x6E ? true : r ? 'NRC ' + hex([r[2]]) : 'no answer';
+    }
+
+    /** One headlight module's own light function (fn, 2 bytes) on for secs seconds (0: off) - see LV_DID above. */
+    async _lv(ecu, fn, secs) {
+        const r = await this._ask(ecu, 0x2E, LV_DID.concat([(fn >> 8) & 0xFF, fn & 0xFF, secs & 0xFF]));
         return r && r[0] === 0x6E ? true : r ? 'NRC ' + hex([r[2]]) : 'no answer';
     }
 
@@ -806,6 +822,48 @@ class Strobe extends EventEmitter {
             this.running = null;
             this.log.info('strobe: ' + (end ? end[0] : 'lights off ended'));
             this._say(end ? end[0] : 'Lights off stopped', end ? end[1] : 'dim');
+        }
+    }
+
+    /**
+     * HIGH_BEAM_TRIES, one at a time in the left headlight module only (0x43), each held LV_SECS seconds then let
+     * go by itself - watch the car and note which (if any) actually looked like a real full-bright high beam, same
+     * as F.high already gives through _setChannels on a car where this.mask is found. Only makes sense where it
+     * isn't: this car has no mask (#246), so F.high only ever reaches the body controller, which this app's own
+     * log shows accepted every time but never confirms the lamp itself lit at all, let alone at full brightness.
+     */
+    testHighBeam() { return this._held(() => this._testHighBeam()); }
+    async _testHighBeam() {
+        if (this.running) return;
+        if (this.kind !== 'fn') { this._say('Test high beam: needs the body controller\'s light functions', 'warn'); return; }
+        if (this.mask) { this._say('Test high beam: this car already has real headlight channel control', 'warn'); return; }
+        const why = this.allowed('strobe');
+        if (why) { this._say('Test high beam not started: ' + why, 'warn'); return; }
+        this.running = 'testhigh'; this._stop = false;
+        const left = SIDES[0];
+        let end = null, tried = 0;
+        try {
+            const r = await this._ask(left, 0x10, [0x03]);
+            if (!r || r[0] !== 0x50) { end = ['Test high beam: the left headlight refused the diagnostic session', 'warn']; return; }
+            for (const fn of HIGH_BEAM_TRIES) {
+                if (this._stop) break;
+                const stopWhy = this.allowed(this.running);
+                if (stopWhy) { end = ['Test high beam stopped: ' + stopWhy, 'warn']; break; }
+                this._say('Testing high beam mode ' + hex([fn]) + ' of ' + HIGH_BEAM_TRIES.map((x) => hex([x])).join('/')
+                    + ' - watch the left headlight', 'dim');
+                const res = await this._lv(left, fn, LV_SECS);
+                tried++;
+                if (res !== true) { this.log.info('strobe: test high beam ' + hex([fn]) + ' refused (' + res + ')'); continue; }
+                const t0 = this.now();
+                while (!this._stop && this.now() - t0 < LV_SECS * 1000 + 500) await this.sleep(200);
+            }
+            if (!end) end = [this._stop ? 'Test high beam stopped' : tried ? 'Test high beam done - which mode, if any, looked brighter?' : 'Test high beam: every mode refused', 'dim'];
+        } finally {
+            await this._lv(left, 0, 0);
+            await this._ask(left, 0x10, [0x01]);
+            this.running = null;
+            this.log.info('strobe: ' + (end ? end[0] : 'test high beam ended'));
+            this._say(end ? end[0] : 'Test high beam stopped', end ? end[1] : 'dim');
         }
     }
 

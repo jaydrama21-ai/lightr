@@ -602,6 +602,18 @@ mgu.run({
                     if (learning) strobe.stop(); else strobe.learn().catch((e) => log.warn('strobe: ' + e));
                     return redraw();
                 }, { primary: learning, key: 'strobe-learn', busy: !learning && !!strobe.running });
+                colY += 44;
+            }
+            if (strobe && strobe.kind === 'fn' && !strobe.mask) {
+                // this car has no real per-channel headlight control (#246), so Police's high beam only ever
+                // reaches the body controller, which never confirms the lamp itself lit, let alone at full
+                // brightness - testHighBeam() tries a few of the headlight module's own high-beam modes directly
+                const testing = strobe.running === 'testhigh';
+                G.button(cv, t, 480, colY, 220, 42, testing ? 'Stop' : 'Test high beam modes', () => {
+                    if (testing) strobe.stop(); else strobe.testHighBeam().catch((e) => log.warn('strobe: ' + e));
+                    return redraw();
+                }, { primary: testing, key: 'strobe-testhigh', busy: !testing && !!strobe.running });
+                colY += 44;
             }
             cv.text('Pattern', 44, 346, 18, t.dim);
             // chase: fn-only (it just cycles light functions, same as the others, but no headlight-unit equivalent
